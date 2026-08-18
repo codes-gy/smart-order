@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Smart Order">
+  <rect width="512" height="512" fill="#4B2E2B" />
+  <path
+    d="M196 226h120a18 18 0 0 1 18 18v60c0 40-32 72-72 72h-12c-40 0-72-32-72-72v-60a18 18 0 0 1 18-18Z"
+    fill="#FFF7ED"
+  />
+  <path
+    d="M334 238h10a34 34 0 0 1 0 68h-16v-24h16a10 10 0 0 0 0-20h-10v-24Z"
+    fill="#FFF7ED"
+  />
+  <rect x="190" y="352" width="132" height="16" rx="8" fill="#FFF7ED" />
+</svg>
