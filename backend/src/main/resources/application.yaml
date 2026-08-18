@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: smart-order
+  profiles:
+    active:
+      - local
+  jackson:
+    datatype:
+      datetime:
+        write-dates-as-timestamps: false
+
+logging:
+  level:
+    com.gy.smartorder: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
