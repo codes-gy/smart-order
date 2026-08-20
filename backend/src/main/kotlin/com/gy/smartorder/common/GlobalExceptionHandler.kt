@@ -20,7 +20,8 @@ class GlobalExceptionHandler {
 
     @ExceptionHandler(ApiException::class)
     fun handleApiException(ex: ApiException): ResponseEntity<ErrorResponse> =
-        ResponseEntity.status(ex.status).body(ErrorResponse(ex.code, ex.message ?: "요청을 처리할 수 없습니다."))
+        ResponseEntity.status(ex.status)
+            .body(ErrorResponse(ex.code, ex.message ?: "요청을 처리할 수 없습니다.", ex.details))
 
     @ExceptionHandler(MethodArgumentNotValidException::class)
     fun handleValidation(ex: MethodArgumentNotValidException): ResponseEntity<ErrorResponse> {

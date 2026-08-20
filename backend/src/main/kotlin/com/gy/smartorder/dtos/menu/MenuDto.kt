@@ -1,6 +1,11 @@
 package com.gy.smartorder.dtos.menu
 
-import com.google.firebase.database.annotations.NotNull
+import com.gy.smartorder.entities.menu.Menu
+import com.gy.smartorder.entities.menu.MenuStatus
+import jakarta.validation.constraints.Min
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.NotNull
+import java.time.LocalDateTime
 
 class MenuDto {
 
