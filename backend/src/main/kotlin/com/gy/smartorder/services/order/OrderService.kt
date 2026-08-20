@@ -15,6 +15,7 @@ import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 
 @Service
 @Transactional(readOnly = true)
@@ -22,6 +23,7 @@ class OrderService(
     private val orderRepository: OrderRepository,
     private val storeRepository: StoreRepository,
     private val menuRepository: MenuRepository,
+    private val orderEventPublisher: OrderEventPublisher,
 )
 {
     /** 주문 생성 직전 재고/판매상태를 서버 기준으로 재검증한다 (PRD 3.3, F-03). */
@@ -112,7 +114,20 @@ class OrderService(
     fun updateOrderStatus(orderId: Long, req: OrderDto.OrderStatusUpdateRequest): OrderDto.OrderResponse {
         val order = findOrderOrThrow(orderId)
         order.updateStatus(req.status!!)
+        // @LastModifiedDate(updatedAt)를 지금 시점에 반영해, 뒤이어 만드는 SSE 이벤트의 시각이 정확하게 한다.
+        orderRepository.flush()
+        orderEventPublisher.publish(orderId, OrderDto.OrderTrackingEvent.from(order))
         return OrderDto.OrderResponse.from(order)
+    }
+
+    /**
+     * 주문 상태 실시간 추적 SSE 구독 (PRD 4.1, F-04).
+     * 구독 시점의 현재 상태를 첫 이벤트로 즉시 보내, 이미 상태가 진행된 뒤 접속한 클라이언트도
+     * 다음 상태 변경을 기다리지 않고 바로 현재 상태를 알 수 있게 한다.
+     */
+    fun subscribeToOrderEvents(orderId: Long): SseEmitter {
+        val order = findOrderOrThrow(orderId)
+        return orderEventPublisher.subscribe(orderId, OrderDto.OrderTrackingEvent.from(order))
     }
 
     private fun validateItems(items: List<OrderDto.OrderItemCreateRequest>): List<OrderDto.OrderIssue> {
