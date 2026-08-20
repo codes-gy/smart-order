@@ -21,12 +21,23 @@ import org.springframework.data.annotation.LastModifiedDate
 import org.springframework.data.jpa.domain.support.AuditingEntityListener
 import java.time.LocalDateTime
 
+/**
+ * 주문 상태 라이프사이클(PRD 4.4): PENDING -> ACCEPTED -> PREPARING -> READY -> PICKED_UP (또는 CANCELLED).
+ * 프론트 `order.types.ts`의 OrderStatus 값과 1:1로 맞춘다 (이전에는 PREPARING이 없고 COMPLETED였음).
+ */
 enum class OrderStatus {
     PENDING,    // 주문 접수 대기
-    ACCEPTED,   // 주문 수락 (조리 중)
+    ACCEPTED,   // 주문 수락
+    PREPARING,  // 조리 중
     READY,      // 조리 완료 (픽업 대기)
-    COMPLETED,  // 픽업 완료
+    PICKED_UP,  // 픽업 완료
     CANCELLED   // 주문 취소
+}
+
+/** 포장 방식. 프론트 `cart.types.ts`의 PackagingType과 값을 맞춘다. */
+enum class PackagingType {
+    TAKE_OUT,
+    DINE_IN,
 }
 
 @Entity
@@ -34,7 +45,7 @@ enum class OrderStatus {
     name = "orders",
     indexes = [
         Index(name = "idx_orders_store_status", columnList = "store_id, status"),
-        Index(name = "idx_orders_created_at", columnList = "created_at")
+        Index(name = "idx_orders_created_at", columnList = "created_at"),
     ]
 )
 @EntityListeners(AuditingEntityListener::class)
@@ -54,6 +65,25 @@ class Order(
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     var status: OrderStatus = OrderStatus.PENDING,
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    var packagingType: PackagingType = PackagingType.TAKE_OUT,
+
+    /** 적용한 쿠폰 ID. coupon 도메인이 아직 없어 지금은 값만 저장하고 할인 계산에는 반영하지 않는다. */
+    @Column(name = "coupon_id")
+    var couponId: Long? = null,
+
+    /** 적립(스탬프) 사용 여부. member 도메인이 아직 없어 지금은 값만 저장하고 할인 계산에는 반영하지 않는다. */
+    @Column(nullable = false)
+    var useStamp: Boolean = false,
+
+    /**
+     * 클라이언트가 생성한 멱등성 키(X-Idempotency-Key). 유니크 제약으로 동시에 같은 키로
+     * 재요청이 들어와도 주문이 두 번 생성되지 않도록 DB 레벨에서 보장한다.
+     */
+    @Column(name = "idempotency_key", nullable = false, unique = true, length = 100)
+    var idempotencyKey: String,
 
     @OneToMany(mappedBy = "order", cascade = [CascadeType.ALL], orphanRemoval = true)
     var orderItems: MutableList<OrderItem> = mutableListOf(),
