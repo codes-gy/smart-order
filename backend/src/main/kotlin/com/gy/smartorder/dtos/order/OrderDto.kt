@@ -168,4 +168,34 @@ class OrderDto {
             }
         }
     }
+
+    /**
+     * SSE(또는 REST Polling 폴백)로 전달되는 주문 상태 갱신 이벤트.
+     * 프론트 `OrderTrackingEvent`({ orderId, status, updatedAt, message })와 1:1로 대응한다.
+     */
+    data class OrderTrackingEvent(
+        val orderId: String,
+        val status: OrderStatus,
+        val updatedAt: LocalDateTime,
+        val message: String,
+    ) {
+        companion object {
+            /** 프론트 orderTrackingMock.ts의 STATUS_MESSAGE와 문구를 맞춘다. */
+            private val STATUS_MESSAGE: Map<OrderStatus, String> = mapOf(
+                OrderStatus.PENDING to "주문을 접수하고 있어요",
+                OrderStatus.ACCEPTED to "매장에서 주문을 확인했어요",
+                OrderStatus.PREPARING to "음료를 제조하고 있어요",
+                OrderStatus.READY to "픽업 준비가 완료됐어요",
+                OrderStatus.PICKED_UP to "픽업이 완료됐어요",
+                OrderStatus.CANCELLED to "주문이 취소됐어요",
+            )
+
+            fun from(order: Order): OrderTrackingEvent = OrderTrackingEvent(
+                orderId = order.id.toString(),
+                status = order.status,
+                updatedAt = order.updatedAt,
+                message = STATUS_MESSAGE[order.status] ?: "",
+            )
+        }
+    }
 }
