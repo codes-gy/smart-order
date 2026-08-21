@@ -30,6 +30,7 @@ class OrderItem(
     @Column(nullable = false, length = 100)
     var menuName: String,
 
+    /** 옵션이 반영된 1개 단가 (메뉴 기본가 + 선택한 옵션들의 priceDelta 합). 프론트 `CartLineItem.unitPrice`와 같은 의미. */
     @Column(nullable = false)
     var price: Int,
 
@@ -39,12 +40,7 @@ class OrderItem(
     @Column(nullable = false)
     var totalPrice: Int = price * quantity,
 
-    /**
-     * 선택한 메뉴 옵션(온도, 샷 추가 등) choice ID 목록.
-     * Menu 엔티티에 아직 옵션 그룹 도메인이 없어 지금은 선택값만 그대로 저장하고,
-     * 옵션별 추가 금액(priceDelta)은 totalPrice 계산에 반영하지 않는다.
-     * 메뉴 옵션 도메인이 추가되면 이 필드를 기준으로 가격 재계산 로직을 붙여야 한다.
-     */
+    /** 선택한 메뉴 옵션(온도, 샷 추가 등) choice ID 목록. 가격 반영은 OrderService.createOrder에서 처리한다. */
     @ElementCollection
     @CollectionTable(name = "order_item_option_choice", joinColumns = [JoinColumn(name = "order_item_id")])
     @Column(name = "option_choice_id")

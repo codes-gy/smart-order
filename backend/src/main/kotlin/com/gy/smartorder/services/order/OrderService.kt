@@ -4,6 +4,7 @@ import com.gy.smartorder.common.exception.BadRequestException
 import com.gy.smartorder.common.exception.ConflictException
 import com.gy.smartorder.common.exception.NotFoundException
 import com.gy.smartorder.dtos.order.OrderDto
+import com.gy.smartorder.entities.menu.Menu
 import com.gy.smartorder.entities.menu.MenuStatus
 import com.gy.smartorder.entities.order.Order
 import com.gy.smartorder.entities.order.OrderItem
@@ -71,18 +72,19 @@ class OrderService(
             val menu = menuRepository.findByIdOrNull(itemReq.menuId!!)
                 ?: throw NotFoundException("MENU_NOT_FOUND", "해당 메뉴를 찾을 수 없습니다. id=${itemReq.menuId}")
             val quantity = itemReq.quantity!!
+            val unitPrice = menu.price + optionsPriceDelta(menu, itemReq.optionChoiceIds)
             val orderItem = OrderItem(
                 menuId = menu.id,
                 menuName = menu.name,
-                price = menu.price,
+                price = unitPrice,
                 quantity = quantity,
-                totalPrice = menu.price * quantity,
+                totalPrice = unitPrice * quantity,
                 optionChoiceIds = itemReq.optionChoiceIds.toMutableList(),
             )
             order.addOrderItem(orderItem)
         }
 
-        // coupon/member(적립) 도메인이 아직 없어 할인은 반영하지 않는다. 아이템 합계를 그대로 총액으로 쓴다.
+        // coupon/member(적립) 도메인이 아직 없어 할인은 반영하지 않는다. 아이템 합계(옵션 가격 포함)를 그대로 총액으로 쓴다.
         order.totalPrice = order.orderItems.sumOf { it.totalPrice }
 
         val savedOrder = try {
@@ -130,6 +132,13 @@ class OrderService(
         return orderEventPublisher.subscribe(orderId, OrderDto.OrderTrackingEvent.from(order))
     }
 
+    /** 요청한 옵션 choice ID들의 priceDelta 합. 메뉴에 실제로 없는 choice ID는 무시한다. */
+    private fun optionsPriceDelta(menu: Menu, optionChoiceIds: List<Long>): Int =
+        menu.optionGroups
+            .flatMap { it.choices }
+            .filter { choice -> choice.id in optionChoiceIds }
+            .sumOf { it.priceDelta }
+
     private fun validateItems(items: List<OrderDto.OrderItemCreateRequest>): List<OrderDto.OrderIssue> {
         val issues = mutableListOf<OrderDto.OrderIssue>()
         items.forEach { itemReq ->
@@ -156,8 +165,21 @@ class OrderService(
                     )
                 )
             }
-            // NOTE: 메뉴 옵션 그룹 도메인이 아직 없어 OPTION_SOLD_OUT은 판정하지 못한다.
-            // PRICE_CHANGED도 프론트가 라인별 기대 가격을 보내지 않아(현재 계약상) 비교 대상이 없다.
+
+            val soldOutChoice = menu.optionGroups
+                .flatMap { it.choices }
+                .find { choice -> choice.id in itemReq.optionChoiceIds && choice.isSoldOut }
+            if (soldOutChoice != null) {
+                issues.add(
+                    OrderDto.OrderIssue(
+                        menuId = menu.id.toString(),
+                        menuName = menu.name,
+                        reason = OrderDto.OrderIssueReason.OPTION_SOLD_OUT,
+                        message = "${menu.name}의 '${soldOutChoice.label}' 옵션이 품절되었어요.",
+                    )
+                )
+            }
+            // NOTE: PRICE_CHANGED는 프론트가 라인별 기대 가격을 보내지 않아(현재 계약상) 비교 대상이 없다.
         }
         return issues
     }
