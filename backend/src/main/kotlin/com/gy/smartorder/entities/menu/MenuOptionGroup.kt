@@ -1,6 +1,5 @@
 package com.gy.smartorder.entities.menu
 
-import com.gy.smartorder.entities.category.Category
 import jakarta.persistence.CascadeType
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -22,56 +21,52 @@ import org.springframework.data.annotation.LastModifiedDate
 import org.springframework.data.jpa.domain.support.AuditingEntityListener
 import java.time.LocalDateTime
 
-enum class MenuStatus {
-    ON_SALE,   // 판매중
-    SOLD_OUT,  // 품절
-    HIDDEN,    // 숨김
+/**
+ * 옵션 선택 방식. 프론트 `OptionType`은 소문자 문자열("single"/"multiple")이라
+ * Jackson enum 기본 직렬화(대문자 name)와 어긋난다. 매핑 문제를 아예 없애기 위해
+ * 이 enum은 JPA 저장/내부 로직에만 쓰고, 응답 DTO(`MenuDto.MenuOptionGroupResponse`)에서
+ * 수동으로 소문자 문자열로 변환해서 내려준다.
+ */
+enum class MenuOptionType {
+    SINGLE,
+    MULTIPLE,
 }
 
 @Entity
 @Table(
-    name = "menu",
+    name = "menu_option_group",
     indexes = [
-        Index(name = "idx_menu_category_order", columnList = "category_id, display_order"),
-        Index(name = "idx_menu_status", columnList = "status")
+        Index(name = "idx_menu_option_group_menu_order", columnList = "menu_id, display_order"),
     ]
 )
 @EntityListeners(AuditingEntityListener::class)
-class Menu(
+class MenuOptionGroup(
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long = 0L,
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "category_id", nullable = false)
-    var category: Category,
+    @JoinColumn(name = "menu_id", nullable = false)
+    var menu: Menu,
 
+    /** 예: "온도", "샷 추가", "시럽 추가", "우유 변경" */
     @Column(nullable = false, length = 100)
     var name: String,
 
-    @Column(nullable = false)
-    var price: Int,
-
-    @Column(length = 500)
-    var description: String? = null,
-
-    @Column(length = 500)
-    var imageUrl: String? = null,
-
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    var status: MenuStatus = MenuStatus.ON_SALE,
+    var type: MenuOptionType,
 
     @Column(nullable = false)
-    var isPopular: Boolean = false,
+    var required: Boolean = false,
 
     @Column(nullable = false)
     var displayOrder: Int = 0,
 
-    /** 온도, 샷 추가 등 이 메뉴에 달린 옵션 그룹들 (PRD, menu.types.ts의 MenuOptionGroup과 대응). */
-    @OneToMany(mappedBy = "menu", cascade = [CascadeType.ALL], orphanRemoval = true)
+    @OneToMany(mappedBy = "optionGroup", cascade = [CascadeType.ALL], orphanRemoval = true)
     @OrderBy("displayOrder ASC")
-    var optionGroups: MutableList<MenuOptionGroup> = mutableListOf(),
+    var choices: MutableList<MenuOptionChoice> = mutableListOf(),
 
     @CreatedDate
     @Column(nullable = false, updatable = false)
@@ -80,28 +75,4 @@ class Menu(
     @LastModifiedDate
     @Column(nullable = false)
     var updatedAt: LocalDateTime = LocalDateTime.now(),
-
-    )
-{
-    fun updateInfo(
-        category: Category,
-        name: String,
-        price: Int,
-        description: String?,
-        imageUrl: String?,
-        isPopular: Boolean,
-        displayOrder: Int,
-    ) {
-        this.category = category
-        this.name = name
-        this.price = price
-        this.description = description
-        this.imageUrl = imageUrl
-        this.isPopular = isPopular
-        this.displayOrder = displayOrder
-    }
-
-    fun updateStatus(status: MenuStatus) {
-        this.status = status
-    }
-}
+)
