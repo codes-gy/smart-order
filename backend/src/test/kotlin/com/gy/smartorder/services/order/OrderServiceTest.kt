@@ -14,6 +14,7 @@ import com.gy.smartorder.repositories.menu.MenuRepository
 import com.gy.smartorder.repositories.order.OrderRepository
 import com.gy.smartorder.repositories.store.StoreRepository
 import com.gy.smartorder.services.coupon.CouponService
+import com.gy.smartorder.services.member.MemberService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -27,7 +28,7 @@ import org.mockito.Mockito.verify
 import java.time.LocalTime
 
 /**
- * OrderService의 쿠폰 할인 반영 로직(coupon 도메인 연동분)만 다루는 단위 테스트.
+ * OrderService의 쿠폰/스탬프 할인 반영 로직(coupon, member 적립 도메인 연동분)만 다루는 단위 테스트.
  * 그 외 OrderService 동작(재고 검증, 옵션 가격 등)은 이번 변경 범위 밖이라 커버하지 않는다.
  */
 class OrderServiceTest {
@@ -37,6 +38,7 @@ class OrderServiceTest {
     private lateinit var menuRepository: MenuRepository
     private lateinit var orderEventPublisher: OrderEventPublisher
     private lateinit var couponService: CouponService
+    private lateinit var memberService: MemberService
     private lateinit var orderService: OrderService
 
     @BeforeEach
@@ -46,7 +48,8 @@ class OrderServiceTest {
         menuRepository = mock(MenuRepository::class.java)
         orderEventPublisher = mock(OrderEventPublisher::class.java)
         couponService = mock(CouponService::class.java)
-        orderService = OrderService(orderRepository, storeRepository, menuRepository, orderEventPublisher, couponService)
+        memberService = mock(MemberService::class.java)
+        orderService = OrderService(orderRepository, storeRepository, menuRepository, orderEventPublisher, couponService, memberService)
     }
 
     private fun store() = Store(
@@ -70,11 +73,12 @@ class OrderServiceTest {
         status = MenuStatus.ON_SALE,
     )
 
-    private fun createRequest(couponId: Long? = null) = OrderDto.OrderCreateRequest(
+    private fun createRequest(couponId: Long? = null, useStamp: Boolean = false) = OrderDto.OrderCreateRequest(
         storeId = 1L,
         items = listOf(OrderDto.OrderItemCreateRequest(menuId = 1L, quantity = 1)),
         packagingType = PackagingType.TAKE_OUT,
         couponId = couponId,
+        useStamp = useStamp,
         idempotencyKey = "idem-key-1",
     )
 
@@ -172,6 +176,73 @@ class OrderServiceTest {
 
         assertThatThrownBy { orderService.createOrder(createRequest(couponId = 10L), null, memberId = 1L) }
             .isInstanceOf(ConflictException::class.java)
+        verify(orderRepository, never()).save(any(Order::class.java))
+    }
+
+    @Test
+    fun `스탬프를 사용하지 않으면 MemberService를 호출하지 않는다`() {
+        val store = store()
+        given(orderRepository.findByIdempotencyKey("idem-key-1")).willReturn(null)
+        given(storeRepository.findById(1L)).willReturn(java.util.Optional.of(store))
+        given(menuRepository.findById(1L)).willReturn(java.util.Optional.of(menu(store)))
+        given(orderRepository.save(any(Order::class.java))).willAnswer { it.arguments[0] as Order }
+
+        orderService.createOrder(createRequest(), null, memberId = 1L)
+
+        verify(memberService, never()).redeemStampReward(anyLong())
+    }
+
+    @Test
+    fun `스탬프를 사용하면 소비하고 할인액만큼 총액에서 뺀다`() {
+        val store = store()
+        given(orderRepository.findByIdempotencyKey("idem-key-1")).willReturn(null)
+        given(storeRepository.findById(1L)).willReturn(java.util.Optional.of(store))
+        given(menuRepository.findById(1L)).willReturn(java.util.Optional.of(menu(store)))
+        given(memberService.redeemStampReward(1L)).willReturn(4500)
+        given(orderRepository.save(any(Order::class.java))).willAnswer { it.arguments[0] as Order }
+
+        val response = orderService.createOrder(createRequest(useStamp = true), null, memberId = 1L)
+
+        assertThat(response.totalAmount).isEqualTo(0)
+        verify(memberService).redeemStampReward(1L)
+    }
+
+    @Test
+    fun `스탬프가 부족하면 MemberService의 예외가 그대로 전파되고 주문은 저장되지 않는다`() {
+        val store = store()
+        given(orderRepository.findByIdempotencyKey("idem-key-1")).willReturn(null)
+        given(storeRepository.findById(1L)).willReturn(java.util.Optional.of(store))
+        given(menuRepository.findById(1L)).willReturn(java.util.Optional.of(menu(store)))
+        given(memberService.redeemStampReward(1L))
+            .willThrow(ConflictException("STAMP_NOT_ENOUGH", "스탬프가 부족해요."))
+
+        assertThatThrownBy { orderService.createOrder(createRequest(useStamp = true), null, memberId = 1L) }
+            .isInstanceOf(ConflictException::class.java)
+        verify(orderRepository, never()).save(any(Order::class.java))
+    }
+
+    @Test
+    fun `동일 idempotencyKey의 동시 요청이 먼저 스탬프를 소비하고 주문을 완료했다면 그 주문을 멱등하게 반환한다`() {
+        val store = store()
+        val concurrentlyCreatedOrder = Order(
+            id = 43L,
+            store = store,
+            memberId = 1L,
+            totalPrice = 0,
+            packagingType = PackagingType.TAKE_OUT,
+            idempotencyKey = "idem-key-1",
+        )
+        given(orderRepository.findByIdempotencyKey("idem-key-1"))
+            .willReturn(null, concurrentlyCreatedOrder)
+        given(storeRepository.findById(1L)).willReturn(java.util.Optional.of(store))
+        given(menuRepository.findById(1L)).willReturn(java.util.Optional.of(menu(store)))
+        given(memberService.redeemStampReward(1L))
+            .willThrow(ConflictException("STAMP_NOT_ENOUGH", "스탬프가 부족해요."))
+
+        val response = orderService.createOrder(createRequest(useStamp = true), null, memberId = 1L)
+
+        assertThat(response.orderId).isEqualTo("43")
+        assertThat(response.totalAmount).isEqualTo(0)
         verify(orderRepository, never()).save(any(Order::class.java))
     }
 }

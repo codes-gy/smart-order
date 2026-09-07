@@ -8,8 +8,7 @@ import java.time.LocalDateTime
 
 class MemberDto {
 
-    // stampCount/stampGoal은 Member 적립 도메인 미구현 상태라 0값 placeholder(후속 작업 대상).
-    // availableCouponCount는 CouponService 실제 값을 반영한다.
+    // frontend RewardsSummary({ stampCount, stampGoal, availableCouponCount })와 1:1.
     data class RewardsSummaryResponse(
         val stampCount: Int,
         val stampGoal: Int,
