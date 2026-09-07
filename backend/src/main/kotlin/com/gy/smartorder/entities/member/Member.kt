@@ -91,7 +91,9 @@ class Member(
     @Column(nullable = false)
     var status: MemberStatus = MemberStatus.ACTIVE,
 
-
+    // 적립 스탬프 개수. 주문이 PICKED_UP 상태가 될 때마다 1개씩 쌓이고, 리워드 사용 시 0으로 초기화된다.
+    @Column(name = "stamp_count", nullable = false)
+    var stampCount: Int = 0,
 )
 {
     @CreatedDate
@@ -115,6 +117,14 @@ class Member(
 
     fun updateStatus(status: MemberStatus) {
         this.status = status
+    }
+
+    fun earnStamp() {
+        this.stampCount += 1
+    }
+
+    fun redeemStamp() {
+        this.stampCount = 0
     }
 
     // email/social이 모두 없다는 것은 SMS 인증만으로 provision된 비회원(게스트) 계정이라는 뜻이다.
