@@ -63,7 +63,16 @@
   `issueWelcomeCouponForNewMember(existingMember, memberId)` private 헬퍼로 추출.
 - **검증**: `OrderServiceTest`에 회귀 테스트 2건(동시 요청 시 기존 주문 반환 / 진짜 중복 사용 시 예외 전파)
   추가, `./gradlew clean test` 전체 통과(`BUILD SUCCESSFUL`).
-- **다음 단계**: 커밋/push/PR 생성만 남음(사용자 확인 후 진행).
+
+### 2.3 커밋 + push + PR 생성 — 완료
+- 커밋 2개로 분리: `feat: Coupon 도메인 추가 및 주문 할인 반영`(코드+테스트), `docs: Coupon 브랜치 진행
+  상황 정리`(이 문서). `git push -u origin feature/gy/coupon` 성공(기존 SSH 리모트 설정 그대로 재사용).
+- `gh` CLI 미설치(PR #5 때와 동일 환경) — 사용자가 발급한 GitHub Personal Access Token으로 GitHub REST
+  API(`POST /repos/codes-gy/smart-order/pulls`)를 직접 호출해 생성. 토큰은 이 호출 1회에만 사용하고
+  사용자에게 즉시 폐기(revoke) 권장함.
+- **결과**: PR #6, `feature/gy/coupon` → `develop`, https://github.com/codes-gy/smart-order/pull/6
+- **다음 단계**: 리뷰/머지 대기. 머지 후엔 3절 "다음에 할 일" 1번(Member 적립/스탬프 도메인)부터 새 브랜치로
+  이어서 진행하면 됨.
 
 ## 3. 다음에 할 일 (우선순위 순, `BACKEND_ROADMAP.md` 기준)
 
