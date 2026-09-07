@@ -1,0 +1,117 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project overview
+
+카페 실시간 선주문 & 픽업 플랫폼 ("smart-order"): customers pre-order drinks from a store and track
+preparation/pickup status in real time. This is a monorepo with two independently-run apps that share
+no build tooling but must stay in contract sync:
+
+- `backend/` — Kotlin + Spring Boot 3.x REST API (Gradle, single module, `rootProject.name = "smart-order"`).
+- `frontend/` — Next.js (App Router) + TypeScript client (`npm`).
+
+The backend is the newer, actively-developed side; the frontend's mock layer (`frontend/src/api/mock`,
+`frontend/src/types`) is the source of truth for request/response shapes the backend must match — see
+"Frontend contract syncing" below.
+
+`BACKEND_ROADMAP.md` (repo root) tracks current backend implementation status per domain and the
+prioritized next-steps list; check it before assuming a domain (Auth, Coupon, Member, Cart, Notification)
+is implemented.
+
+## Commands
+
+All backend commands run from `backend/`; all frontend commands run from `frontend/`.
+
+### Backend (Kotlin / Spring Boot / Gradle)
+```bash
+./gradlew build              # compile + run all checks + tests
+./gradlew bootRun            # run the API locally (defaults to the `local` profile: H2 in-memory DB)
+./gradlew test               # run all tests
+./gradlew test --tests "com.gy.smartorder.common.GeoUtilsTest"              # single test class
+./gradlew test --tests "com.gy.smartorder.common.GeoUtilsTest.methodName"   # single test method
+```
+There is no linter/formatter configured (no ktlint/detekt plugin in `build.gradle.kts`) — `./gradlew build`
+is the only gate.
+
+Local profile (`application-local.yaml`) uses an in-memory H2 DB with `ddl-auto: create-drop` (schema is
+regenerated from entities on every start, H2 console at `/h2-console`). The `prod` profile
+(`application-prod.yaml`) uses PostgreSQL with `ddl-auto: validate` — there is **no migration tool
+(Flyway/Liquibase) yet**, so entity changes have no accompanying prod schema script (tracked as a known gap
+in `BACKEND_ROADMAP.md`).
+
+### Frontend (Next.js)
+```bash
+npm run dev      # dev server
+npm run build    # production build
+npm run lint     # eslint
+```
+No test runner is configured in `package.json`.
+
+## Backend architecture
+
+### Package-by-domain, layered within each domain
+Code is organized by domain first (`store`, `category`, `menu`, `order`, `payment`, ...), and each domain
+repeats the same layer stack:
+```
+controllers/<domain>/*Controller.kt   → thin: delegates straight to the service, maps status codes
+dtos/<domain>/*Dto.kt                 → a single `class XxxDto` wrapping request/response data classes as
+                                          nested types (e.g. `OrderDto.OrderCreateRequest`), each with a
+                                          `companion object fun from(entity): Response` mapper
+entities/<domain>/*.kt                → JPA entities, `@EntityListeners(AuditingEntityListener::class)` +
+                                          `@CreatedDate`/`@LastModifiedDate` for timestamps
+repositories/<domain>/*Repository.kt  → plain `JpaRepository<Entity, Long>` with derived-query methods
+services/<domain>/*Service.kt         → `@Service @Transactional(readOnly = true)` at class level, with
+                                          `@Transactional` overridden per mutating method
+```
+`common/` holds cross-domain utilities (`GeoUtils` — Haversine distance, `CursorUtils` — offset-based
+cursor pagination) and the exception/error-response pair described below. New domains should follow this
+same four/five-layer shape rather than introducing a different pattern.
+
+### Error handling
+`ApiException(status, code, message, details: Map<String, List<String>>? = null)` is the base for all
+domain errors; `NotFoundException`, `BadRequestException`, `ConflictException` are its subtypes (mapped to
+404/400/409). `GlobalExceptionHandler` catches `ApiException` and `MethodArgumentNotValidException` and
+renders `ErrorResponse(code, message, details?)`, which is a fixed contract with the frontend's
+`ApiErrorBody`. When adding a new failure mode, prefer throwing one of the existing `ApiException`
+subtypes (or adding a new one) over ad hoc exceptions, so it round-trips through this handler.
+
+### Order domain: idempotency, snapshotting, SSE tracking
+- **Two-step create**: `POST /orders/validate` (re-check sale status against current server state) then
+  `POST /orders` (actually create). `OrderService.validateItems()` backs both.
+- **Idempotency**: `POST /orders` requires `X-Idempotency-Key` header (falls back to the request body's
+  `idempotencyKey` field if the header is absent). The key has a DB unique constraint
+  (`Order.idempotencyKey`); `OrderService.createOrder()` first looks up an existing order by that key, and
+  also catches `DataIntegrityViolationException` on save to handle the concurrent-duplicate-request race by
+  re-fetching and returning the existing order instead of erroring. `PaymentService.confirmPayment()`
+  applies the identical pattern (lookup-by-key, then catch-and-refetch-on-save) keyed on `paymentKey` and
+  on `orderId` (a `Payment` is unique per `Order`).
+- **Snapshotting**: `OrderItem` copies `menuName`/`price` from `Menu` at order time so historical orders
+  stay accurate if the menu changes later. `optionChoiceIds` is stored but not priced — there is no menu
+  option/choice domain yet, so `priceDelta` is not applied to `totalPrice` (see roadmap item "메뉴 옵션 그룹
+  도메인").
+- **Real-time tracking**: `GET /orders/{orderId}/events` is an SSE stream backed by `OrderEventPublisher`,
+  an in-memory `ConcurrentHashMap<orderId, CopyOnWriteArrayList<SseEmitter>>` registry (per-instance state —
+  not safe across multiple backend instances; the roadmap notes migrating this to Redis Pub/Sub, since
+  Redisson is already a dependency, before scaling out). It sends the current state immediately on
+  subscribe, broadcasts on `OrderService.updateOrderStatus()`, and sends a named `ping` event every 15s
+  (`@Scheduled`, requires `@EnableScheduling` on the application class) to keep proxies from closing idle
+  connections — intentionally a *named* event so the browser `EventSource` default `onmessage` handler
+  doesn't see it. Clients are expected to reconnect with exponential backoff and fall back to polling
+  `GET /orders/{orderId}` after repeated failures.
+
+### Frontend contract syncing
+Backend DTOs, enum values, and error shapes are deliberately kept 1:1 with frontend TypeScript types
+(`frontend/src/types/*.types.ts`) and the frontend's mock API implementations
+(`frontend/src/api/mock`, `frontend/src/api/*Api.ts`). DTO/entity doc comments frequently point at the
+specific frontend file/type they must match (e.g. `OrderStatus` ↔ `order.types.ts`, `OrderTrackingEvent` ↔
+`OrderTrackingEvent`/`orderTrackingMock.ts` message copy, `CursorUtils` ↔ `storeMock.ts`'s
+`btoa(JSON.stringify({ offset }))` format). When changing a DTO shape or enum, check the corresponding
+frontend type/mock file rather than assuming the backend is free to diverge. Note a known open risk: the
+frontend types most IDs as `string`, while the backend still binds `storeId`/`menuId`/`orderId` etc. as
+`Long` in request bodies.
+
+### Auth
+`SecurityConfig` currently `permitAll`s every request (`spring-boot-starter-security` is on the classpath
+only to avoid the default random-password HTTP Basic prompt). There is no authentication/authorization yet
+— every endpoint, including store-admin and payment-confirm endpoints, is publicly callable.

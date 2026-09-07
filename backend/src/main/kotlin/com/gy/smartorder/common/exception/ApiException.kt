@@ -17,6 +17,11 @@ class NotFoundException(code: String, message: String) : ApiException(HttpStatus
 
 class BadRequestException(code: String, message: String) : ApiException(HttpStatus.BAD_REQUEST, code, message)
 
+class UnauthorizedException(code: String, message: String) : ApiException(HttpStatus.UNAUTHORIZED, code, message)
+
+/** 인증은 됐지만(로그인 상태) 해당 리소스에 대한 권한이 없는 경우 (예: 다른 매장의 STORE_ADMIN 토큰). */
+class ForbiddenException(code: String, message: String) : ApiException(HttpStatus.FORBIDDEN, code, message)
+
 /** 요청 자체는 유효하지만 현재 서버 상태와 충돌하는 경우 (예: 주문 검증 실패, 품절 등). */
 class ConflictException(
     code: String,

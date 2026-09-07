@@ -1,9 +1,12 @@
 package com.gy.smartorder.services.store
 
+import com.gy.smartorder.common.exception.ConflictException
+import com.gy.smartorder.common.exception.ForbiddenException
 import com.gy.smartorder.common.exception.NotFoundException
 import com.gy.smartorder.dtos.store.StoreDto
 import com.gy.smartorder.entities.store.Store
 import com.gy.smartorder.entities.store.StoreStatus
+import com.gy.smartorder.repositories.store.StoreAccountRepository
 import com.gy.smartorder.repositories.store.StoreRepository
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -11,24 +14,29 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
 import java.time.LocalTime
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * StoreService를 실제 StoreRepository + 임베디드 H2로 검증한다(Mockito 등 별도 mocking 없이).
  * `@DataJpaTest`는 JPA 관련 빈만 올리므로 Redis/Kafka/Security 자동 설정과 무관하게 가볍게 돈다.
+ * PasswordEncoder는 시큐리티 슬라이스가 아니라 이 빈이 없어서 직접 생성해서 넣어준다.
  */
 @DataJpaTest
 class StoreServiceTest @Autowired constructor(
     private val storeRepository: StoreRepository,
+    private val storeAccountRepository: StoreAccountRepository,
 ) {
     private lateinit var storeService: StoreService
     private val businessNumberSeq = AtomicInteger(10000)
+    private val storeCodeSeq = AtomicInteger(10000)
 
     @BeforeEach
     fun setUp() {
-        storeService = StoreService(storeRepository)
+        storeService = StoreService(storeRepository, storeAccountRepository, BCryptPasswordEncoder())
         businessNumberSeq.set(10000)
+        storeCodeSeq.set(10000)
     }
 
     private fun saveStore(
@@ -66,6 +74,8 @@ class StoreServiceTest @Autowired constructor(
             longitude = 127.0490,
             openTime = LocalTime.of(7, 0),
             closeTime = LocalTime.of(22, 0),
+            storeCode = "STORE-${storeCodeSeq.getAndIncrement()}",
+            storeAccountPassword = "password123",
         )
 
         val created = storeService.createStore(req)
@@ -73,6 +83,43 @@ class StoreServiceTest @Autowired constructor(
         assertThat(created.id).isGreaterThan(0)
         assertThat(storeRepository.findById(created.id)).isPresent
         assertThat(storeRepository.findById(created.id).get().name).isEqualTo("선릉점")
+        assertThat(storeAccountRepository.findByStoreCode(req.storeCode)?.storeId).isEqualTo(created.id)
+    }
+
+    @Test
+    fun `이미 사용 중인 매장 코드로 생성하면 ConflictException을 던진다`() {
+        val storeCode = "STORE-${storeCodeSeq.getAndIncrement()}"
+        storeService.createStore(
+            StoreDto.StoreCreateRequest(
+                name = "선릉점",
+                address = "서울특별시 강남구 선릉로 1",
+                phone = "02-1111-2222",
+                businessNumber = "999-88-77778",
+                latitude = 37.5044,
+                longitude = 127.0490,
+                openTime = LocalTime.of(7, 0),
+                closeTime = LocalTime.of(22, 0),
+                storeCode = storeCode,
+                storeAccountPassword = "password123",
+            ),
+        )
+
+        assertThatThrownBy {
+            storeService.createStore(
+                StoreDto.StoreCreateRequest(
+                    name = "역삼점",
+                    address = "서울특별시 강남구 역삼로 1",
+                    phone = "02-1111-3333",
+                    businessNumber = "999-88-77779",
+                    latitude = 37.5006,
+                    longitude = 127.0364,
+                    openTime = LocalTime.of(7, 0),
+                    closeTime = LocalTime.of(22, 0),
+                    storeCode = storeCode,
+                    storeAccountPassword = "password456",
+                ),
+            )
+        }.isInstanceOf(ConflictException::class.java)
     }
 
     @Test
@@ -169,7 +216,7 @@ class StoreServiceTest @Autowired constructor(
     fun `매장 영업상태를 변경할 수 있다`() {
         val store = saveStore(status = StoreStatus.OPEN)
 
-        val updated = storeService.updateStoreStatus(store.id, StoreDto.StatusUpdateRequest(StoreStatus.PAUSED))
+        val updated = storeService.updateStoreStatus(store.id, store.id, StoreDto.StatusUpdateRequest(StoreStatus.PAUSED))
 
         assertThat(updated.status).isEqualTo(StoreStatus.PAUSED)
         assertThat(storeRepository.findById(store.id).get().status).isEqualTo(StoreStatus.PAUSED)
@@ -178,15 +225,26 @@ class StoreServiceTest @Autowired constructor(
     @Test
     fun `존재하지 않는 매장의 상태를 바꾸려 하면 NotFoundException을 던진다`() {
         assertThatThrownBy {
-            storeService.updateStoreStatus(999_999L, StoreDto.StatusUpdateRequest(StoreStatus.PAUSED))
+            storeService.updateStoreStatus(999_999L, 999_999L, StoreDto.StatusUpdateRequest(StoreStatus.PAUSED))
         }.isInstanceOf(NotFoundException::class.java)
+    }
+
+    @Test
+    fun `다른 매장 계정으로 상태를 바꾸려 하면 ForbiddenException을 던진다`() {
+        val store = saveStore(status = StoreStatus.OPEN)
+        val otherStoreId = store.id + 1
+
+        assertThatThrownBy {
+            storeService.updateStoreStatus(otherStoreId, store.id, StoreDto.StatusUpdateRequest(StoreStatus.PAUSED))
+        }.isInstanceOf(ForbiddenException::class.java)
+        assertThat(storeRepository.findById(store.id).get().status).isEqualTo(StoreStatus.OPEN)
     }
 
     @Test
     fun `예상 조리 시간을 변경할 수 있다`() {
         val store = saveStore(prepMinutes = 5)
 
-        val updated = storeService.updatePreparationTime(store.id, StoreDto.PreparationTimeUpdateRequest(15))
+        val updated = storeService.updatePreparationTime(store.id, store.id, StoreDto.PreparationTimeUpdateRequest(15))
 
         assertThat(updated.estimatedPreparationMinutes).isEqualTo(15)
     }
@@ -196,6 +254,7 @@ class StoreServiceTest @Autowired constructor(
         val store = saveStore()
 
         val updated = storeService.updateStore(
+            store.id,
             store.id,
             StoreDto.StoreUpdateRequest(
                 name = "역삼역점(리뉴얼)",

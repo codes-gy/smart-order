@@ -1,16 +1,107 @@
+# ==========================================
+# 공통
+# ==========================================
 spring:
-  application:
-    name: smart-order
   profiles:
-    active:
-      - local
-  jackson:
-    datatype:
-      datetime:
-        write-dates-as-timestamps: false
+    active: local
+
+  # JPA 공통 설정
+  jpa:
+    open-in-view: false # DB 커넥션 고갈 방지
+    properties:
+      hibernate:
+        format_sql: true
+        default_batch_fetch_size: 100 # IN절 한 번에 가져오는 개수
+        jdbc:
+          time_zone: Asia/Seoul
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+
+  kafka:
+    bootstrap-servers: ${KAFKA_SERVER}
+
+# JWT 설정
+jwt:
+  secret: ${JWT_SECRET}
+  access-token-expiration: 3600000       # 1시간
+  refresh-token-expiration: 1209600000   # 14일
+
+# 소셜 로그인 토큰 검증 설정
+oauth:
+  apple:
+    client-id: ${APPLE_CLIENT_ID:} # Sign in with Apple Services ID/Bundle ID — 토큰 aud와 대조
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health, info, metrics, prometheus"
+  endpoint:
+    health:
+      show-details: always
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    groups-order: desc
+    operations-sorter: method
+    disable-swagger-default-url: true
+  api-docs:
+    path: /docs
+---
+# ==========================================
+# 로컬 개발
+# ==========================================
+spring:
+  config:
+    activate:
+      on-profile: local
+
+  datasource:
+    driver-class-name: ${DB_DRIVER_CLASS_NAME}
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        highlight_sql: true
+  h2:
+    console:
+      path: /h2-console
+      enabled: true
 
 logging:
   level:
-    com.gy.smartorder: DEBUG
-    org.hibernate.SQL: DEBUG
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    com.gy.smartorder: debug
+    org.hibernate.SQL: debug
+    org.hibernate.orm.jdbc.bind: trace
+
+---
+# ==========================================
+# 운영 환경
+# ==========================================
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  datasource:
+    driver-class-name: ${DB_DRIVER_CLASS_NAME}
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+
+logging:
+  level:
+    root: info
+    com.gy.smartorder: info

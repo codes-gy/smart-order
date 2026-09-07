@@ -29,12 +29,35 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
+    implementation("org.springframework.boot:spring-boot-restclient") // RestClient.Builder 자동 구성 (KakaoTokenVerifier 등에서 사용)
+
+    // Kotlin & Jackson 3.x
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("tools.jackson.module:jackson-module-kotlin")
-    implementation("com.google.firebase:firebase-admin:9.2.0")
+
+    // DevTool
     developmentOnly("org.springframework.boot:spring-boot-devtools")
+
+    //External Services & Utilities
+    implementation("com.google.firebase:firebase-admin:9.4.3")
+    implementation("me.paulschwarz:spring-dotenv:4.0.0")
+
+    //DB Drivers
     runtimeOnly("com.h2database:h2")
     runtimeOnly("org.postgresql:postgresql")
+
+    //Actuator
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
+
+    //Swagger
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.5")
+
+    //JWT
+    implementation("io.jsonwebtoken:jjwt-api:0.12.6")
+    runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
+    runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
+
+    // 테스트
     testImplementation("org.springframework.boot:spring-boot-starter-data-jpa-test")
     testImplementation("org.springframework.boot:spring-boot-starter-data-redis-test")
     testImplementation("org.springframework.boot:spring-boot-starter-kafka-test")

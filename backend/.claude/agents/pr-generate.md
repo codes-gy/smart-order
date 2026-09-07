@@ -1,0 +1,1 @@
+/mnt/a/project/smart-order/backend/.claude/commands/pr-generate.md
