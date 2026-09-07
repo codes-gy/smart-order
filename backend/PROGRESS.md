@@ -1,6 +1,6 @@
 # 스마트오더 백엔드 진행 상황 (로컬 세션용)
 
-> 최종 갱신: 2026-09-07 (2.1절 — Member 적립/스탬프 도메인 구현 완료)
+> 최종 갱신: 2026-09-08 (PR #13 생성 완료 — Member 적립/스탬프 도메인, 리뷰/머지 대기)
 > 기준 브랜치: `feature/gy/member-reward` (base: `develop`, merge-base에 Coupon PR #6이 이미 병합돼 있음)
 > 이 문서는 로컬 Claude Code CLI 세션이 관리합니다. `BACKEND_ROADMAP.md`는 Cowork 세션이 별도로 관리하는
 > 문서이니 혼동하지 말 것. 이전 브랜치(`feature/gy/coupon`)의 작업 기록은 PR #6으로 병합 완료돼 이 문서에서는
@@ -49,7 +49,9 @@
   `NoSuchFileException(.../in-progress-results-generic.bin)`로 실패하는 것을 관찰함 — 실제 테스트 실패가
   아니라 Gradle 테스트 결과 파일 원자적 rename이 이 마운트에서 가끔 꼬이는 환경 이슈로 보임(재시도하면
   통과). 재현되면 `clean` 없이 `./gradlew test`로 재시도해볼 것.
-- **다음 단계**: 커밋 + push + PR 생성 대기(사용자 확인 후 진행).
+- **커밋/push/PR 생성 완료**: 커밋(`a93107b` feat, `6b0b462` docs)까지는 이미 이 브랜치 시작 시점에 반영돼
+  있었고, 이번에 `gh pr create`로 PR 생성까지 완료함(base `develop` ← head `feature/gy/member-reward`) —
+  **[PR #13](https://github.com/codes-gy/smart-order/pull/13)**.
 
 ## 3. 다음에 할 일 (우선순위 순, `BACKEND_ROADMAP.md` 기준)
 
@@ -57,7 +59,7 @@
 - 상세 이력은 `git log`/PR #6 참고.
 
 ### [x] 1. Member 적립/스탬프 도메인 — 완료, 2026-09-07 (이 브랜치)
-- 2.1절 참고.
+- 2.1절 참고. PR #13 생성 완료(2026-09-08), 리뷰/머지 대기 중.
 
 ### [ ] 2. Notification 도메인
 - 결제/주문 상태 변경 시 서버발 푸시 트리거 필요 여부부터 재확인.
