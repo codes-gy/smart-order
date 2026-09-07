@@ -50,23 +50,31 @@ No test runner is configured in `package.json`.
 
 ## Backend architecture
 
-### Package-by-domain, layered within each domain
-Code is organized by domain first (`store`, `category`, `menu`, `order`, `payment`, ...), and each domain
-repeats the same layer stack:
+### Package-by-feature
+Code is organized by domain/feature (`store`, `category`, `menu`, `order`, `payment`, `auth`, `member`,
+`coupon`, ...), and each domain package holds every layer for that feature flat in one folder — there are
+no top-level `controllers/`, `dtos/`, `entities/`, `repositories/`, `services/` packages:
 ```
-controllers/<domain>/*Controller.kt   → thin: delegates straight to the service, maps status codes
-dtos/<domain>/*Dto.kt                 → a single `class XxxDto` wrapping request/response data classes as
-                                          nested types (e.g. `OrderDto.OrderCreateRequest`), each with a
-                                          `companion object fun from(entity): Response` mapper
-entities/<domain>/*.kt                → JPA entities, `@EntityListeners(AuditingEntityListener::class)` +
-                                          `@CreatedDate`/`@LastModifiedDate` for timestamps
-repositories/<domain>/*Repository.kt  → plain `JpaRepository<Entity, Long>` with derived-query methods
-services/<domain>/*Service.kt         → `@Service @Transactional(readOnly = true)` at class level, with
-                                          `@Transactional` overridden per mutating method
+<domain>/XxxController.kt   → thin: delegates straight to the service, maps status codes
+<domain>/XxxDto.kt          → a single `class XxxDto` wrapping request/response data classes as nested
+                                types (e.g. `OrderDto.OrderCreateRequest`), each with a
+                                `companion object fun from(entity): Response` mapper
+<domain>/Xxx.kt             → JPA entity, `@EntityListeners(AuditingEntityListener::class)` +
+                                `@CreatedDate`/`@LastModifiedDate` for timestamps
+<domain>/XxxRepository.kt   → plain `JpaRepository<Entity, Long>` with derived-query methods
+<domain>/XxxService.kt      → `@Service @Transactional(readOnly = true)` at class level, with
+                                `@Transactional` overridden per mutating method
 ```
+A domain package may have its own sub-package for internal-only grouping (e.g. `auth/oauth/` holds the
+Kakao/Apple token verifiers used only by `auth/AuthService.kt`) — that's still one feature, just organized
+internally. `coupon/` has no controller (it's exposed through `member/MemberController.kt`); `auth/` has no
+entity of its own (it operates on `member/Member.kt`). Test sources under `src/test/kotlin` mirror this:
+`<domain>/XxxServiceTest.kt` in the same `com.gy.smartorder.<domain>` package, not under a layer folder.
+
 `common/` holds cross-domain utilities (`GeoUtils` — Haversine distance, `CursorUtils` — offset-based
-cursor pagination) and the exception/error-response pair described below. New domains should follow this
-same four/five-layer shape rather than introducing a different pattern.
+cursor pagination) and the exception/error-response pair described below; `config/` holds framework-wide
+setup (security, JWT). Neither is a feature domain. New domains should follow this same flat-per-feature
+shape rather than introducing a different pattern (e.g. a layer-based split).
 
 ### Error handling
 `ApiException(status, code, message, details: Map<String, List<String>>? = null)` is the base for all
