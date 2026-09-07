@@ -1,67 +1,50 @@
 # 스마트오더 백엔드 진행 상황 (로컬 세션용)
 
-> 최종 갱신: 2026-09-07 (1.2절 — Member 적립/스탬프 도메인 구현 완료)
-> 기준 브랜치: `feature/gy/member-stamp` (base: `develop`, merge-base에 PR #5 Auth, PR #6 Coupon이 이미 병합돼 있음)
+> 최종 갱신: 2026-09-07 (1.3절 — Notification 도메인 "백엔드 불필요" 확인 완료)
+> 기준 브랜치: `feature/gy/notification` (base: `develop`, merge-base에 PR #5 Auth, PR #6 Coupon, PR #7
+> Member 적립/스탬프가 이미 병합돼 있음)
 > 이 문서는 로컬 Claude Code CLI 세션이 관리합니다. `BACKEND_ROADMAP.md`는 Cowork 세션이 별도로 관리하는
-> 문서이니 혼동하지 말 것. 이전 브랜치(`feature/gy/auth`, `feature/gy/coupon`)의 작업 기록은 각각 PR #5, PR
-> #6으로 병합 완료돼 이 문서에서는 정리했다 — 상세 이력은 `git log`/PR 참고.
+> 문서이니 혼동하지 말 것. 이전 브랜치(`feature/gy/auth`, `feature/gy/coupon`, `feature/gy/member-stamp`)의
+> 작업 기록은 각각 PR #5, #6, #7로 병합 완료돼 이 문서에서는 정리했다 — 상세 이력은 `git log`/PR 참고.
+>
+> **⚠️ 확인된 중복 작업**: `origin/feature/gy/member-reward`에 다른 세션(추정: Cowork)이 이미 병합된 PR #7과
+> 거의 동일한 내용(Member 적립/스탬프)을 독립적으로 구현해 push해둔 상태. PR은 아직 안 열렸음. develop에
+> 이미 PR #7이 병합됐으니 그 브랜치는 더 이상 필요 없음 — 확인 후 삭제 권장(`git push origin
+> --delete feature/gy/member-reward`), 단 다른 세션이 아직 쓰고 있을 수 있으니 삭제 전 확인 필요.
 
 ## 1. 현재 구현 상태 요약
 
 | 도메인 | 상태 | 비고 |
 | :--- | :--- | :--- |
-| Auth / Store / Category / Menu / Order / Payment | ✅ `develop` 기준 구현됨 | 이번 브랜치 시작 시점에 이미 병합돼 있음 |
+| Auth / Store / Category / Menu / Order / Payment | ✅ `develop` 기준 구현됨 | |
 | Coupon | ✅ `develop` 기준 구현됨 (PR #6) | 회원가입 시 웰컴 쿠폰 자동 발급 + 주문 시 소비 |
-| Member 적립/스탬프 | ✅ 구현 완료 (이 브랜치) | 주문 픽업완료 시 1개 적립, 10개 모으면 4500원 정액 할인으로 사용 |
+| Member 적립/스탬프 | ✅ `develop` 기준 구현됨 (PR #7) | 주문 픽업완료 시 1개 적립, 10개 모으면 4500원 정액 할인으로 사용 |
+| Notification | ➖ 백엔드 작업 불필요로 확인 (이 브랜치) | 프론트가 기존 SSE + 브라우저 Notification API만으로 이미 완결 구현 |
 
 ## 2. 지금까지 한 일 (이 브랜치)
 
-### 2.1 Member 적립/스탬프 도메인 신설 — 구현 완료
-- **프론트 계약 확인**: `frontend/src/utils/constants.ts`의 `STAMP_REWARD_DISCOUNT = 4500`(정액 할인),
-  `frontend/src/types/auth.types.ts`의 `RewardsSummary.stampGoal`은 UI(`CouponStampSelector.tsx`)에서 10
-  고정으로 취급, `orderMock.ts`는 `useStamp`면 4500원을 쿠폰 할인과 함께 차감. Coupon처럼 발급 이력이 필요한
-  구조가 아니라 회원당 카운터 1개면 충분해서 별도 도메인 폴더 대신 **Member 엔티티 확장**으로 처리(별도
-  `stamp` 도메인 폴더를 만들지 않기로 한 설계 결정).
-- `entities/member/Member.kt`: `stampCount: Int`(기본 0) 필드 + `earnStamp()`(+1), `redeemStamp()`(0으로
-  리셋) 메서드 추가.
-- `services/member/MemberService.kt`:
-  - `getRewards()`: `stampCount=0, stampGoal=10` placeholder를 `member.stampCount`/상수 `STAMP_GOAL=10`
-    실값으로 교체.
-  - `earnStamp(memberId)`(신규, `@Transactional`): 주문이 픽업 완료될 때 1개 적립.
-  - `redeemStamp(memberId): Int`(신규, `@Transactional`): `stampCount >= STAMP_GOAL`(10) 검증 후 리셋하고
-    고정 할인액 `STAMP_REWARD_DISCOUNT=4500` 반환. 목표치 미달이면 `ConflictException("STAMP_NOT_ENOUGH")` —
-    Coupon의 `COUPON_ALREADY_USED`와 동일하게 "동시 요청이 방금 상태를 바꿨을 수도 있는" 종류의 실패라
-    BadRequest가 아니라 Conflict로 던져 호출부가 레이스 처리를 할 수 있게 함.
-- **적립 시점**: `OrderService.updateOrderStatus()`에서 상태가 (이전 상태와 다르게) `PICKED_UP`으로 바뀔
-  때만 `memberService.earnStamp(order.memberId)` 호출. "이미 PICKED_UP인 주문을 다시 PICKED_UP으로 갱신"하는
-  재요청이 들어와도 중복 적립되지 않도록 이전 상태를 먼저 캡처해 비교.
-- **사용 시점**: `OrderService.createOrder()`에서 쿠폰 소비와 스탬프 소비를 하나의 `try/catch(ConflictException)`
-  블록으로 묶어, `req.useStamp`면 `memberService.redeemStamp(memberId)`를 호출하고 쿠폰 할인액과 합산해
-  `itemsAmount - couponDiscount - stampDiscount`(0원 아래로 내려가지 않음)를 `totalPrice`로 저장. 레이스 시
-  기존 `couponService.redeem()`과 동일한 패턴으로 `orderRepository.findByIdempotencyKey()` 재조회 후 이미
-  커밋된 주문을 멱등하게 반환.
-- **검증**: `bash gradlew clean test` 전체 통과(`BUILD SUCCESSFUL`, 로컬에 JDK 25 툴체인이 없어 sdkman으로
-  `25.0.4-tem` 설치 후 실행). 신규 `MemberServiceTest`(4건: 적립/사용성공/사용실패/조회), `OrderServiceTest`에
-  스탬프 케이스 4건 추가(사용 성공, 동시요청 레이스 시 멱등 반환, PICKED_UP 전환 시 적립, 중복 전환 시
-  미적립, 다른 상태 전환 시 미적립) — 총 `OrderServiceTest` 11건 + `MemberServiceTest` 4건 전부 통과, 기존
-  테스트 회귀 없음.
-
-### 2.2 커밋 + push + PR 생성 — 완료
-- 커밋 2개로 분리: `feat: Member 적립/스탬프 도메인 추가 및 주문 연동`(코드+테스트), `docs: Member
-  적립/스탬프 브랜치 진행 상황 정리`(이 문서). `git push -u origin feature/gy/member-stamp` 성공.
-- 이번엔 `gh` CLI가 설치·인증돼 있어(`codes-gy` 계정) `gh pr create`로 바로 생성.
-- **결과**: PR #7, `feature/gy/member-stamp` → `develop`, https://github.com/codes-gy/smart-order/pull/7
-- **다음 단계**: 리뷰/머지 대기. 머지 후엔 3절 "다음에 할 일" 2번(Notification 도메인)부터 새 브랜치로
-  이어서 진행하면 됨.
+### 2.1 Notification 도메인 — "백엔드 작업 불필요" 확인, 결론만 문서화
+- **작업 안 함**: 코드 변경 없음. `BACKEND_ROADMAP.md`가 남겨둔 "결제/주문 상태 변경 시 서버발 푸시 트리거
+  필요 여부부터 재확인"에 대한 답을 프론트 코드를 직접 읽어 확정했다.
+- **근거**:
+  - `frontend/src/hooks/usePushNotificationPermission.ts` 주석: "실제 푸시 서버(Web Push) 없이도 픽업
+    준비 완료 시 포그라운드 알림을 데모할 수 있도록 한다" — 브라우저 `Notification` 권한 요청만 감싼 훅.
+  - `frontend/src/routers/OrderTrackingRouter.tsx:37`: 기존 SSE(`GET /orders/{orderId}/events`)로 받는
+    `OrderTrackingEvent.message`를 그대로 `new Notification("스마트오더", { body: event.message })`에
+    넘겨 로컬 브라우저 알림을 띄움. 서버가 푸시를 보내는 게 아니라 **클라이언트가 이미 연결돼 있는 SSE를
+    보고 스스로 알림을 생성**하는 구조.
+  - FCM/APNs/Web Push 구독 토큰 등록·저장, 서버발 트리거 엔드포인트를 요구하는 프론트 API 계약이나 mock이
+    전혀 없음 (`frontend/src/api/mock/` 전체 검색 결과 없음).
+- **사용자 확인**: "백엔드 불필요 확인으로 종료" 방향으로 결정(대안이었던 "탭이 닫혀있어도 알림 오는 실제
+  Web Push 구현"은 프론트 계약에 없는 새 기능이라 범위 밖으로 보류).
+- `PROGRESS.md`/`BACKEND_ROADMAP.md`의 도메인 상태만 갱신하고 다음 우선순위(Event)로 넘어간다.
 
 ## 3. 다음에 할 일 (우선순위 순, `BACKEND_ROADMAP.md` 기준)
 
 ### [x] 0. Coupon 도메인 — 완료 (PR #6, `develop` 병합됨)
-### [x] 1. Member 적립/스탬프 도메인 — 완료, 2026-09-07 (이 브랜치)
-- 2.1절 참고.
-
-### [ ] 2. Notification 도메인
-- 결제/주문 상태 변경 시 서버발 푸시 트리거 필요 여부부터 재확인.
+### [x] 1. Member 적립/스탬프 도메인 — 완료 (PR #7, `develop` 병합됨)
+### [x] 2. Notification 도메인 — 백엔드 작업 불필요로 확인, 2026-09-07 (이 브랜치)
+- 2.1절 참고. 프론트가 SSE + 브라우저 Notification API로 이미 완결.
 
 ### [ ] 3. Event 도메인
 - PRD상 정확한 용도 확인 필요. 우선순위 가장 낮음.
