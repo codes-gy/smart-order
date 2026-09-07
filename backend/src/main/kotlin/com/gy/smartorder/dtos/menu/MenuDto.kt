@@ -55,6 +55,58 @@ class MenuDto {
         val status: MenuStatus?,
     )
 
+    /** `type`은 프론트 `OptionType`과 동일하게 "single"/"multiple" 소문자 문자열로 받는다. */
+    data class MenuOptionGroupCreateRequest(
+        @field:NotBlank(message = "옵션 그룹명은 필수입니다.")
+        val name: String,
+
+        @field:NotBlank(message = "옵션 타입은 필수입니다.")
+        val type: String,
+
+        val required: Boolean = false,
+
+        @field:Min(value = 0, message = "노출 순서는 0 이상이어야 합니다.")
+        val displayOrder: Int = 0,
+    )
+
+    data class MenuOptionGroupUpdateRequest(
+        @field:NotBlank(message = "옵션 그룹명은 필수입니다.")
+        val name: String,
+
+        @field:NotBlank(message = "옵션 타입은 필수입니다.")
+        val type: String,
+
+        val required: Boolean = false,
+
+        @field:Min(value = 0, message = "노출 순서는 0 이상이어야 합니다.")
+        val displayOrder: Int = 0,
+    )
+
+    data class MenuOptionChoiceCreateRequest(
+        @field:NotBlank(message = "선택지명은 필수입니다.")
+        val label: String,
+
+        val priceDelta: Int = 0,
+
+        @field:Min(value = 0, message = "노출 순서는 0 이상이어야 합니다.")
+        val displayOrder: Int = 0,
+    )
+
+    data class MenuOptionChoiceUpdateRequest(
+        @field:NotBlank(message = "선택지명은 필수입니다.")
+        val label: String,
+
+        val priceDelta: Int = 0,
+
+        @field:Min(value = 0, message = "노출 순서는 0 이상이어야 합니다.")
+        val displayOrder: Int = 0,
+    )
+
+    data class MenuOptionChoiceSoldOutUpdateRequest(
+        @field:NotNull(message = "품절 여부는 필수입니다.")
+        val isSoldOut: Boolean?,
+    )
+
     /** 프론트 `MenuOptionChoice`({ id, label, priceDelta, isSoldOut })와 1:1로 대응한다. */
     data class MenuOptionChoiceResponse(
         val id: Long,
