@@ -1,16 +1,22 @@
 # 스마트오더 백엔드 진행 상황 (로컬 세션용)
 
-> 최종 갱신: 2026-09-07 (1.3절 — Notification 도메인 "백엔드 불필요" 확인 완료)
-> 기준 브랜치: `feature/gy/notification` (base: `develop`, merge-base에 PR #5 Auth, PR #6 Coupon, PR #7
-> Member 적립/스탬프가 이미 병합돼 있음)
+> 최종 갱신: 2026-09-07 (1.4절 — Event 도메인 PRD 근거 부족으로 보류)
+> 기준 브랜치: `feature/gy/event` (base: `develop`, merge-base에 PR #5 Auth, PR #6 Coupon, PR #7 Member
+> 적립/스탬프, PR #8 Notification 결론이 이미 병합돼 있음)
 > 이 문서는 로컬 Claude Code CLI 세션이 관리합니다. `BACKEND_ROADMAP.md`는 Cowork 세션이 별도로 관리하는
-> 문서이니 혼동하지 말 것. 이전 브랜치(`feature/gy/auth`, `feature/gy/coupon`, `feature/gy/member-stamp`)의
-> 작업 기록은 각각 PR #5, #6, #7로 병합 완료돼 이 문서에서는 정리했다 — 상세 이력은 `git log`/PR 참고.
+> 문서이니 혼동하지 말 것. 이전 브랜치들의 작업 기록은 각각 PR #5~#8로 병합 완료돼 이 문서에서는 정리했다
+> — 상세 이력은 `git log`/PR 참고. PR 본문은 앞으로 `.github/PULL_REQUEST_TEMPLATE.md` 형식(작업
+> 유형/작업 내용/고민한 내용/체크리스트/테스트/참고 사항)을 따른다.
 >
-> **⚠️ 확인된 중복 작업**: `origin/feature/gy/member-reward`에 다른 세션(추정: Cowork)이 이미 병합된 PR #7과
-> 거의 동일한 내용(Member 적립/스탬프)을 독립적으로 구현해 push해둔 상태. PR은 아직 안 열렸음. develop에
-> 이미 PR #7이 병합됐으니 그 브랜치는 더 이상 필요 없음 — 확인 후 삭제 권장(`git push origin
-> --delete feature/gy/member-reward`), 단 다른 세션이 아직 쓰고 있을 수 있으니 삭제 전 확인 필요.
+> **⚠️ 확인된 중복 작업 (미해결)**: `origin/feature/gy/member-reward`에 다른 세션(추정: Cowork)이 이미
+> 병합된 PR #7과 거의 동일한 내용(Member 적립/스탬프)을 독립적으로 구현해 push해둔 상태. PR은 아직 안
+> 열렸음. develop에 이미 PR #7이 병합됐으니 그 브랜치는 더 이상 필요 없음 — 확인 후 삭제 권장(`git push
+> origin --delete feature/gy/member-reward`), 단 다른 세션이 아직 쓰고 있을 수 있으니 삭제 전 확인 필요.
+>
+> **⚠️ 오래된 중복 문서 발견 (미해결)**: `backend/BACKEND_ROADMAP.md`가 저장소 루트 `BACKEND_ROADMAP.md`와
+> 별개로 git에 추적돼 있음. Auth 도메인이 아직 미구현이던 시절 스냅샷이라 지금은 완전히 stale — 루트
+> 문서가 진짜 최신본. 정리(삭제) 필요하지만 이 문서는 Cowork 세션이 관리하는 영역이라 확인 없이 건드리지
+> 않았음.
 
 ## 1. 현재 구현 상태 요약
 
@@ -19,35 +25,27 @@
 | Auth / Store / Category / Menu / Order / Payment | ✅ `develop` 기준 구현됨 | |
 | Coupon | ✅ `develop` 기준 구현됨 (PR #6) | 회원가입 시 웰컴 쿠폰 자동 발급 + 주문 시 소비 |
 | Member 적립/스탬프 | ✅ `develop` 기준 구현됨 (PR #7) | 주문 픽업완료 시 1개 적립, 10개 모으면 4500원 정액 할인으로 사용 |
-| Notification | ➖ 백엔드 작업 불필요로 확인 (이 브랜치) | 프론트가 기존 SSE + 브라우저 Notification API만으로 이미 완결 구현 |
+| Notification | ➖ 백엔드 작업 불필요로 확인 (PR #8) | 프론트가 기존 SSE + 브라우저 Notification API만으로 이미 완결 구현 |
+| Event | ⏸ 보류 (이 브랜치) | PRD 근거 없어 설계 불가 — 3절 참고 |
 
 ## 2. 지금까지 한 일 (이 브랜치)
 
-### 2.1 Notification 도메인 — "백엔드 작업 불필요" 확인, 결론만 문서화
-- **작업 안 함**: 코드 변경 없음. `BACKEND_ROADMAP.md`가 남겨둔 "결제/주문 상태 변경 시 서버발 푸시 트리거
-  필요 여부부터 재확인"에 대한 답을 프론트 코드를 직접 읽어 확정했다.
-- **근거**:
-  - `frontend/src/hooks/usePushNotificationPermission.ts` 주석: "실제 푸시 서버(Web Push) 없이도 픽업
-    준비 완료 시 포그라운드 알림을 데모할 수 있도록 한다" — 브라우저 `Notification` 권한 요청만 감싼 훅.
-  - `frontend/src/routers/OrderTrackingRouter.tsx:37`: 기존 SSE(`GET /orders/{orderId}/events`)로 받는
-    `OrderTrackingEvent.message`를 그대로 `new Notification("스마트오더", { body: event.message })`에
-    넘겨 로컬 브라우저 알림을 띄움. 서버가 푸시를 보내는 게 아니라 **클라이언트가 이미 연결돼 있는 SSE를
-    보고 스스로 알림을 생성**하는 구조.
-  - FCM/APNs/Web Push 구독 토큰 등록·저장, 서버발 트리거 엔드포인트를 요구하는 프론트 API 계약이나 mock이
-    전혀 없음 (`frontend/src/api/mock/` 전체 검색 결과 없음).
-- **사용자 확인**: "백엔드 불필요 확인으로 종료" 방향으로 결정(대안이었던 "탭이 닫혀있어도 알림 오는 실제
-  Web Push 구현"은 프론트 계약에 없는 새 기능이라 범위 밖으로 보류).
-- `PROGRESS.md`/`BACKEND_ROADMAP.md`의 도메인 상태만 갱신하고 다음 우선순위(Event)로 넘어간다.
+### 2.1 Event 도메인 조사 — PRD 근거 부족으로 보류, 구현하지 않음
+- **작업 안 함**: 코드 변경 없음.
+- **조사 내용**: `BACKEND_ROADMAP.md`에 "Event | ❌ 미구현 | PRD상 용도 불명확, 우선순위 낮음" 한 줄 외
+  아무 설명이 없음. 프론트엔드에 이벤트/프로모션 관련 페이지·타입·mock이 전혀 없음(`이벤트`, `promotion`,
+  `banner` 등 전체 검색 결과 없음). 저장소 어디에도 PRD 원문이 없어(`find . -iname "*PRD*"` 결과 없음)
+  Notification 때처럼 프론트 코드로 용도를 확정할 근거 자체가 없음.
+- **사용자 확인**: 근거 없이 설계를 추측해서 구현하지 않고, 보류한 채 우선순위 4번(Cart 재확인)으로
+  넘어가기로 결정. Event는 PRD 맥락이 확보되면 그때 다시 착수.
 
 ## 3. 다음에 할 일 (우선순위 순, `BACKEND_ROADMAP.md` 기준)
 
 ### [x] 0. Coupon 도메인 — 완료 (PR #6, `develop` 병합됨)
 ### [x] 1. Member 적립/스탬프 도메인 — 완료 (PR #7, `develop` 병합됨)
-### [x] 2. Notification 도메인 — 백엔드 작업 불필요로 확인, 2026-09-07 (이 브랜치)
-- 2.1절 참고. 프론트가 SSE + 브라우저 Notification API로 이미 완결.
-
-### [ ] 3. Event 도메인
-- PRD상 정확한 용도 확인 필요. 우선순위 가장 낮음.
+### [x] 2. Notification 도메인 — 백엔드 작업 불필요로 확인 (PR #8, `develop` 병합됨)
+### [보류] 3. Event 도메인 — PRD 근거 부족, 2026-09-07 (이 브랜치)
+- 2.1절 참고. PRD 맥락이 확보되기 전까지는 착수하지 않음.
 
 ### [ ] 4. Cart 도메인 필요 여부 재확인
 - 프론트가 Zustand로 클라이언트에만 보관 중 — 백엔드 API 자체가 불필요할 가능성.
