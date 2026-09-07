@@ -1,7 +1,7 @@
 # 스마트오더 백엔드 진행 상황 (로컬 세션용)
 
-> 최종 갱신: 2026-09-07 (1.6절 — 메뉴 옵션 관리자 CRUD 구현 완료)
-> 기준 브랜치: `feature/gy/menu-option-admin` (base: `develop`, merge-base에 PR #5~#10이 이미 병합돼 있음)
+> 최종 갱신: 2026-09-07 (1.7절 — 패키지 구조를 Package by Layer → Package by Feature로 전환)
+> 기준 브랜치: `feature/gy/package-by-feature` (base: `develop`, merge-base에 PR #5~#11이 이미 병합돼 있음)
 > 이 문서는 로컬 Claude Code CLI 세션이 관리합니다. `BACKEND_ROADMAP.md`는 Cowork 세션이 별도로 관리하는
 > 문서이니 혼동하지 말 것. 이전 브랜치들의 작업 기록은 각각 PR #5~#8로 병합 완료돼 이 문서에서는 정리했다
 > — 상세 이력은 `git log`/PR 참고. PR 본문은 앞으로 `.github/PULL_REQUEST_TEMPLATE.md` 형식(작업
@@ -27,11 +27,37 @@
 | Notification | ➖ 백엔드 작업 불필요로 확인 (PR #8) | 프론트가 기존 SSE + 브라우저 Notification API만으로 이미 완결 구현 |
 | Event | ⏸ 보류 (PR #9) | PRD 근거 없어 설계 불가 — 3절 참고 |
 | Cart | ➖ 백엔드 작업 불필요로 확인 (PR #10) | 프론트가 Zustand `persist`(localStorage)로 클라이언트에만 보관, 서버 동기화 없음 |
-| 메뉴 옵션 관리자 CRUD | ✅ 구현 완료 (이 브랜치) | 옵션 그룹/선택지 생성·수정·삭제·품절처리. 조회는 기존 `GET /menus/{id}`가 담당 |
+| 메뉴 옵션 관리자 CRUD | ✅ `develop` 기준 구현됨 (PR #11) | 옵션 그룹/선택지 생성·수정·삭제·품절처리. 조회는 기존 `GET /menus/{id}`가 담당 |
 
 ## 2. 지금까지 한 일 (이 브랜치)
 
-### 2.1 메뉴 옵션 관리자 CRUD 구현 완료
+### 2.1 Package by Layer → Package by Feature 구조 전환
+- **사용자 요청**: 도메인 우선순위 작업(로드맵 6번 진행 예정 시점)과 별개로, 패키지 구조 자체를
+  `controllers/<domain>`, `dtos/<domain>`, `entities/<domain>`, `repositories/<domain>`,
+  `services/<domain>`(레이어가 최상위) 방식에서 `<domain>/XxxController.kt`, `<domain>/XxxDto.kt`,
+  `<domain>/Xxx.kt`, `<domain>/XxxRepository.kt`, `<domain>/XxxService.kt`(도메인이 최상위, 레이어는
+  파일명 접미사) 방식으로 바꿔달라는 명시적 요청. 사용자 확인: 저장소 전체를 새 브랜치 하나로 한 번에
+  이동, `CLAUDE.md`(루트)/`backend/CLAUDE.md` 문서도 함께 갱신.
+- **PR #11(메뉴 옵션 관리자 CRUD)과의 순서 조율**: 이 리팩토링을 시작했을 때 PR #11이 구 구조 기준으로
+  리뷰 대기 중이었음. 사용자와 상의해 "PR #11을 먼저 병합 → 그 다음 이 리팩토링 브랜치를 새 `develop`
+  기준으로 재작업"하는 순서로 결정. 실제로 PR #11을 먼저 병합한 뒤, 이 브랜치를 삭제하고 새 `develop`에서
+  다시 만들어 마이그레이션 스크립트를 재실행 — PR #11로 추가된 메뉴 옵션 CRUD 파일들도 자동으로 새
+  구조에 포함됨(수동 conflict 해결 없이 깨끗하게 처리).
+- **적용 범위**: `auth`, `category`, `coupon`, `member`, `menu`, `order`, `payment`, `store` 8개 도메인의
+  `src/main/kotlin`·`src/test/kotlin` 전체 파일(60+ 파일)을 `git mv`로 이동. `auth/oauth/`(카카오/애플
+  토큰 검증기)처럼 도메인 내부 하위 그룹은 서브패키지로 유지. `common/`, `config/`는 도메인이 아니라서
+  그대로 둠.
+- 파일 이동 후 모든 `package`/`import` 선언을 `com.gy.smartorder.(controllers|dtos|entities|repositories|
+  services).<domain>` → `com.gy.smartorder.<domain>` 패턴으로 일괄 치환, 레이어가 같은 패키지로 합쳐지며
+  생긴 불필요한 자기 자신 패키지 import를 전부 제거.
+- `CLAUDE.md`(루트) "Backend architecture" 절과 `backend/CLAUDE.md`의 "[Directory & Architecture
+  Conventions]" 절을 새 구조에 맞게 다시 씀.
+- **검증**: `bash gradlew clean test` 전체 통과(`BUILD SUCCESSFUL`), 테스트 스위트 12개 총 95건 전부 통과
+  — 리팩토링 전(develop, PR #11 병합 후 기준)과 동일 개수, 회귀 없음.
+
+### 2.2 (참고) 메뉴 옵션 관리자 CRUD — PR #11로 `develop` 병합 완료
+- 상세 구현 내역은 PR #11 및 이전 세션 기록 참고. 이 문서의 이전 절(옛 1.6절)에 있던 상세 내용은
+  `develop` 병합 완료로 정리했다.
 - **프론트 확인**: `StoreAdminDashboardRouter`엔 메뉴 품절 토글(`MenuSoldOutRow`)과 매장 오픈 스위치만 있고
   옵션 그룹/선택지 관리 UI는 없음. 다만 기존 `CategoryController`/`MenuController`가 프론트 admin UI가
   아직 안 쓰는 create/update/delete까지 이미 다 구현해둔 전례가 있어(Category/Menu 모두 풀 CRUD 보유),
@@ -71,8 +97,9 @@
 - PRD 맥락이 확보되기 전까지는 착수하지 않음.
 
 ### [x] 4. Cart 도메인 — 백엔드 작업 불필요로 확인 (PR #10, `develop` 병합됨)
-### [x] 5. 메뉴 옵션 관리자 CRUD — 완료, 2026-09-07 (이 브랜치)
-- 2.1절 참고.
+### [x] 5. 메뉴 옵션 관리자 CRUD — 완료 (PR #11, `develop` 병합됨)
+### [x] (번외) Package by Layer → Package by Feature 전환 — 완료, 2026-09-07 (이 브랜치)
+- 2.1절 참고. 로드맵 우선순위 목록에는 없던 사용자 직접 요청 작업.
 
 ### [ ] 6. 인프라/운영
 - 마이그레이션 도구(Flyway/Liquibase) 도입 — prod 프로필(`ddl-auto: validate`)용 스키마 스크립트 없음.

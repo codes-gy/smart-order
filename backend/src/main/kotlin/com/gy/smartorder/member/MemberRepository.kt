@@ -1,0 +1,11 @@
+package com.gy.smartorder.member
+
+import com.gy.smartorder.member.Member
+import com.gy.smartorder.member.SocialProvider
+import org.springframework.data.jpa.repository.JpaRepository
+
+interface MemberRepository : JpaRepository<Member, Long> {
+    fun findByEmail(email: String): Member?
+    fun findBySocialProviderAndSocialId(socialProvider: SocialProvider, socialId: String): Member?
+    fun findByPhoneNumber(phoneNumber: String): Member?
+}
