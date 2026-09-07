@@ -43,3 +43,7 @@ out/
 .env
 .env.*
 !.env.example
+
+### Scratch / cleanup ###
+**/_to_delete/
+*.stale
