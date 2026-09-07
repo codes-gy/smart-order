@@ -1,6 +1,7 @@
 package com.gy.smartorder.controllers.member
 
 import com.gy.smartorder.dtos.auth.AuthDto
+import com.gy.smartorder.dtos.coupon.CouponDto
 import com.gy.smartorder.dtos.member.MemberDto
 import com.gy.smartorder.services.member.MemberService
 import jakarta.validation.Valid
@@ -49,7 +50,7 @@ class MemberController(
     }
 
     @GetMapping("/coupons")
-    fun getCoupons(@AuthenticationPrincipal memberId: Long): ResponseEntity<List<MemberDto.CouponResponse>> {
+    fun getCoupons(@AuthenticationPrincipal memberId: Long): ResponseEntity<List<CouponDto.CouponResponse>> {
         return ResponseEntity.ok(memberService.getCoupons(memberId))
     }
 }
