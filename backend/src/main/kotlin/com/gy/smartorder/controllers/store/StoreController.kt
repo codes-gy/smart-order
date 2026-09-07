@@ -5,6 +5,7 @@ import com.gy.smartorder.services.store.StoreService
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PatchMapping
@@ -48,29 +49,32 @@ class StoreController(
 
     @PatchMapping("/{storeId}")
     fun updateStore(
+        @AuthenticationPrincipal authenticatedStoreId: Long,
         @PathVariable storeId: Long,
         @Valid @RequestBody req: StoreDto.StoreUpdateRequest,
     ): ResponseEntity<StoreDto.StoreResponse> {
-        val res = storeService.updateStore(storeId, req)
+        val res = storeService.updateStore(authenticatedStoreId, storeId, req)
         return ResponseEntity.ok(res)
     }
 
     /** F-05: 매장 관리자 대시보드의 "주문 받기/일시정지" 스위치. */
     @PatchMapping("/{storeId}/status")
     fun updateStoreStatus(
+        @AuthenticationPrincipal authenticatedStoreId: Long,
         @PathVariable storeId: Long,
         @Valid @RequestBody req: StoreDto.StatusUpdateRequest,
     ): ResponseEntity<StoreDto.StoreResponse> {
-        val res = storeService.updateStoreStatus(storeId, req)
+        val res = storeService.updateStoreStatus(authenticatedStoreId, storeId, req)
         return ResponseEntity.ok(res)
     }
 
     @PatchMapping("/{storeId}/preparation-time")
     fun updateStorePreparationTime(
+        @AuthenticationPrincipal authenticatedStoreId: Long,
         @PathVariable storeId: Long,
         @Valid @RequestBody req: StoreDto.PreparationTimeUpdateRequest,
     ): ResponseEntity<StoreDto.StoreResponse> {
-        val res = storeService.updatePreparationTime(storeId, req)
+        val res = storeService.updatePreparationTime(authenticatedStoreId, storeId, req)
         return ResponseEntity.ok(res)
     }
 }

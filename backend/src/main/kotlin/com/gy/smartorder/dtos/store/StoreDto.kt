@@ -46,6 +46,13 @@ class StoreDto {
 
         @field:NotNull(message = "마감 시간은 필수입니다.")
         val closeTime: LocalTime,
+
+        // 매장 생성과 동시에 매장 관리자(StoreAccount) 로그인 계정을 함께 발급한다(PROGRESS.md 4절 5번 결정).
+        @field:NotBlank(message = "매장 코드는 필수입니다.")
+        val storeCode: String,
+
+        @field:NotBlank(message = "매장 관리자 비밀번호는 필수입니다.")
+        val storeAccountPassword: String,
     )
 
     // 점포 전체 정보 수정 요청 DTO
