@@ -1,8 +1,7 @@
 # 스마트오더 백엔드 진행 상황 (로컬 세션용)
 
-> 최종 갱신: 2026-09-07 (1.5절 — Cart 도메인 "백엔드 불필요" 확인 완료)
-> 기준 브랜치: `feature/gy/cart` (base: `develop`, merge-base에 PR #5 Auth, PR #6 Coupon, PR #7 Member
-> 적립/스탬프, PR #8 Notification, PR #9 Event 보류 결론이 이미 병합돼 있음)
+> 최종 갱신: 2026-09-07 (1.6절 — 메뉴 옵션 관리자 CRUD 구현 완료)
+> 기준 브랜치: `feature/gy/menu-option-admin` (base: `develop`, merge-base에 PR #5~#10이 이미 병합돼 있음)
 > 이 문서는 로컬 Claude Code CLI 세션이 관리합니다. `BACKEND_ROADMAP.md`는 Cowork 세션이 별도로 관리하는
 > 문서이니 혼동하지 말 것. 이전 브랜치들의 작업 기록은 각각 PR #5~#8로 병합 완료돼 이 문서에서는 정리했다
 > — 상세 이력은 `git log`/PR 참고. PR 본문은 앞으로 `.github/PULL_REQUEST_TEMPLATE.md` 형식(작업
@@ -27,24 +26,41 @@
 | Member 적립/스탬프 | ✅ `develop` 기준 구현됨 (PR #7) | 주문 픽업완료 시 1개 적립, 10개 모으면 4500원 정액 할인으로 사용 |
 | Notification | ➖ 백엔드 작업 불필요로 확인 (PR #8) | 프론트가 기존 SSE + 브라우저 Notification API만으로 이미 완결 구현 |
 | Event | ⏸ 보류 (PR #9) | PRD 근거 없어 설계 불가 — 3절 참고 |
-| Cart | ➖ 백엔드 작업 불필요로 확인 (이 브랜치) | 프론트가 Zustand `persist`(localStorage)로 클라이언트에만 보관, 서버 동기화 없음 |
+| Cart | ➖ 백엔드 작업 불필요로 확인 (PR #10) | 프론트가 Zustand `persist`(localStorage)로 클라이언트에만 보관, 서버 동기화 없음 |
+| 메뉴 옵션 관리자 CRUD | ✅ 구현 완료 (이 브랜치) | 옵션 그룹/선택지 생성·수정·삭제·품절처리. 조회는 기존 `GET /menus/{id}`가 담당 |
 
 ## 2. 지금까지 한 일 (이 브랜치)
 
-### 2.1 Cart 도메인 — "백엔드 작업 불필요" 확인, 결론만 문서화
-- **작업 안 함**: 코드 변경 없음. `BACKEND_ROADMAP.md`가 남겨둔 "프론트가 Zustand로 클라이언트에만 보관
-  중 — 백엔드 API 자체가 불필요할 가능성" 재확인 요청에 대한 답을 프론트 코드로 확정했다.
-- **근거**:
-  - `frontend/src/stores/cartStore.ts`: Zustand `persist` 미들웨어로 `CART_STORAGE_KEY` 하에
-    `localStorage`에만 저장하는 순수 클라이언트 상태. 서버 호출이 전혀 없음.
-  - `frontend/src/hooks/useCart.ts`: `cartStore`를 감싸 파생값(합계/개수)만 계산하는 훅, 마찬가지로
-    API 호출 없음.
-  - 저장소 전체에 `cartApi.ts` 같은 파일이 없고, `/cart`로 잡히는 것도 Next.js 페이지 라우트뿐 — 백엔드
-    REST 호출은 전무.
-  - 체크아웃 시점에는 장바구니 내용을 그대로 `POST /orders/validate` → `POST /orders`(이미 구현된 Order
-    도메인)로 변환해서 보내는 구조라, 장바구니 자체를 서버에 저장/동기화할 필요가 없음.
-- **결론**: Cart 전용 백엔드 API(도메인)는 불필요. 별도 확인 질문 없이 코드 근거만으로 결론 확정(Notification
-  때와 동일한 패턴).
+### 2.1 메뉴 옵션 관리자 CRUD 구현 완료
+- **프론트 확인**: `StoreAdminDashboardRouter`엔 메뉴 품절 토글(`MenuSoldOutRow`)과 매장 오픈 스위치만 있고
+  옵션 그룹/선택지 관리 UI는 없음. 다만 기존 `CategoryController`/`MenuController`가 프론트 admin UI가
+  아직 안 쓰는 create/update/delete까지 이미 다 구현해둔 전례가 있어(Category/Menu 모두 풀 CRUD 보유),
+  같은 패턴으로 옵션 CRUD도 미리 구현하기로 결정. `BACKEND_ROADMAP.md`도 "Category/Menu CRUD와 같은
+  패턴으로 추가하면 됨"이라고 명시.
+- 엔드포인트(신규, `controllers/menu/MenuOptionController.kt`):
+  - `POST /menus/{menuId}/option-groups`, `PATCH /option-groups/{groupId}`, `DELETE /option-groups/{groupId}`
+  - `POST /option-groups/{groupId}/choices`, `PATCH /option-choices/{choiceId}`, `DELETE /option-choices/{choiceId}`
+  - `PATCH /option-choices/{choiceId}/sold-out` — 품절처리 전용(Menu의 `/status` 엔드포인트와 동일한 패턴)
+  - 조회는 기존 `GET /menus/{menuId}` 응답에 이미 `optionGroups`가 포함돼 있어 별도 엔드포인트 없음.
+- `services/menu/MenuOptionService.kt`(신규): Category/Menu 서비스와 동일한 관례 —
+  `existsByMenuIdAndName`/`existsByOptionGroupIdAndLabel`로 그룹/그룹 내 선택지명 중복 생성 방지,
+  `NotFoundException`(`MENU_NOT_FOUND`/`OPTION_GROUP_NOT_FOUND`/`OPTION_CHOICE_NOT_FOUND`)으로 404 처리.
+- `type`(옵션 선택 방식) 요청 값은 프론트처럼 소문자 문자열("single"/"multiple")로 받고 서비스에서
+  수동 파싱(`parseOptionType`) — 잘못된 값이면 `BadRequestException("INVALID_OPTION_TYPE")`. 기존
+  `MenuOptionType` enum에 `@JsonCreator`를 붙이지 않은 이유(응답 직렬화와의 매핑 충돌 회피, 엔티티 주석
+  참고)를 그대로 존중해 입력 파싱도 서비스 레이어에서 수동으로 처리.
+- `entities/menu/MenuOptionGroup.kt`/`MenuOptionChoice.kt`에 `updateInfo()`/`updateSoldOut()` mutator
+  추가(Menu/Category 엔티티와 동일한 관례).
+- `repositories/menu/MenuOptionGroupRepository.kt`, `MenuOptionChoiceRepository.kt` 신규.
+- `dtos/menu/MenuDto.kt`에 Create/Update/SoldOutUpdate 요청 DTO 6종 추가.
+- **알려진 한계(기존 Category/Menu와 동일)**: `SecurityConfig`가 `/menus/**`, `/option-groups/**`,
+  `/option-choices/**`를 STORE_ADMIN 역할로 제한하지 않고 있어(현재 `/stores/**`의 PATCH만 특별
+  취급, 나머지는 `anyRequest, authenticated`로 인증만 요구) 로그인한 아무 회원이나 호출 가능함 — 이건
+  이번에 새로 생긴 문제가 아니라 Category/Menu 변경 API가 원래도 갖고 있던 한계를 그대로 물려받은 것.
+  STORE_ADMIN 제한이 필요하면 별도 작업으로 SecurityConfig 규칙 확장 필요.
+- **검증**: `bash gradlew clean test` 전체 통과(`BUILD SUCCESSFUL`). 신규 `MenuOptionServiceTest`(12건:
+  그룹 생성/중복명/메뉴없음/잘못된타입, 그룹 수정/없음, 그룹 삭제, 선택지 생성/중복명, 선택지 수정,
+  선택지 품절처리, 선택지 삭제) 전부 통과, 기존 테스트 회귀 없음.
 
 ## 3. 다음에 할 일 (우선순위 순, `BACKEND_ROADMAP.md` 기준)
 
@@ -54,11 +70,9 @@
 ### [보류] 3. Event 도메인 — PRD 근거 부족 (PR #9, `develop` 병합됨)
 - PRD 맥락이 확보되기 전까지는 착수하지 않음.
 
-### [x] 4. Cart 도메인 — 백엔드 작업 불필요로 확인, 2026-09-07 (이 브랜치)
-- 2.1절 참고. 프론트가 localStorage에만 저장, 서버 동기화 없음.
-
-### [ ] 5. 메뉴 옵션 관리자 CRUD
-- 매장 관리자가 옵션 그룹/선택지를 등록·수정·삭제·품절처리 하는 기능(조회/주문 반영은 이미 완료).
+### [x] 4. Cart 도메인 — 백엔드 작업 불필요로 확인 (PR #10, `develop` 병합됨)
+### [x] 5. 메뉴 옵션 관리자 CRUD — 완료, 2026-09-07 (이 브랜치)
+- 2.1절 참고.
 
 ### [ ] 6. 인프라/운영
 - 마이그레이션 도구(Flyway/Liquibase) 도입 — prod 프로필(`ddl-auto: validate`)용 스키마 스크립트 없음.
