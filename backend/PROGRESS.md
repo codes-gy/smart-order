@@ -1,6 +1,6 @@
 # 스마트오더 백엔드 진행 상황 (로컬 세션용)
 
-> 최종 갱신: 2026-09-07 (2.16절 — 커밋 8개로 분리 완료 + `origin/feature/gy/auth`로 push 완료, PR 생성만 남음)
+> 최종 갱신: 2026-09-07 (2.17절 — PR #5 생성 완료, `feature/gy/auth` → `develop`)
 > 기준 브랜치: `feature/gy/auth`
 > 이 문서는 로컬 Claude Code CLI 세션이 관리합니다. `BACKEND_ROADMAP.md`는 Cowork 세션이 별도로 관리하는
 > 문서라 이 branch(`feature/gy/auth`)에서 진행된 최신 작업이 아직 반영돼 있지 않습니다(거기엔 "Auth ❌ 미구현"으로
@@ -318,6 +318,19 @@
   feature/gy/auth` 성공, 업스트림 추적 설정됨. GitHub이 PR 생성 링크를 안내함
   (`https://github.com/codes-gy/smart-order/pull/new/feature/gy/auth`).
 - **다음 단계**: PR 생성만 남음(제목/본문 작성, `pr-generate` 에이전트 활용 가능) — 사용자 확인 후 진행.
+
+### 2.17 PR 생성 — 완료
+- **배경**: 사용자가 "PR 만들어줘"로 요청. GitHub 기본 브랜치가 `main`이 아니라 `develop`인 것을
+  `git remote show origin`으로 확인(로컬 `master`는 오래돼서 payment/order 작업 이전 시점에 멈춰있음 —
+  `develop`과의 merge-base가 `7593e3d`(결제 기능 API 추가)로, 이 브랜치가 정확히 그 지점에서 갈라진 것과 일치).
+- **PR 생성 경로 이슈**: `gh` CLI 미설치, `sudo apt install`은 이 환경에서 비밀번호 입력이 막혀 실패. 사용자가
+  발급한 GitHub Personal Access Token으로 GitHub REST API(`POST /repos/codes-gy/smart-order/pulls`)를 직접
+  호출해 생성함(`gh`/`sudo` 불필요). 토큰은 이 API 호출 1회에만 사용, 대화에 노출된 채로 남아 사용자에게
+  즉시 폐기(revoke) 권장함.
+- **PR 본문**: `pr-generate` 에이전트 템플릿(`.github/PULL_REQUEST_TEMPLATE.md`) 형식을 따라 작업
+  유형/내용/고민한 점/체크리스트/테스트/참고 사항을 채움 — 이번 세션의 2.1~2.16절 작업 내역(버그 수정 2건,
+  `.env` 시크릿 처리 포함)을 요약 반영.
+- **결과**: PR #5, `feature/gy/auth` → `develop`, https://github.com/codes-gy/smart-order/pull/5
 
 ## 4-1. 4절 항목 상태 — 전체 완료
 0~7번 전 항목 완료, 2.11절 `StoreControllerTest` 수정, 2.12절 소셜 토큰 서버 검증, 2.13절
