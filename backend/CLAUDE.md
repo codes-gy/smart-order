@@ -29,15 +29,23 @@
 - Build Tool: Gradle (Kotlin DSL)
 
 [Directory & Architecture Conventions]
-도메인 중심 Layered Architecture를 기본으로 지정
+Package by Feature를 기본으로 지정 — 레이어(controllers/dtos/entities/repositories/services)가 아니라
+도메인(store/category/menu/order/payment/auth/member/coupon)이 최상위 패키지다. 도메인 폴더 하나에 그
+도메인의 모든 레이어 파일이 평평하게 모여 있다:
+- `<domain>/XxxController.kt`: API 엔드포인트 수신, 요청 파라미터 1차 검증 (`@Valid`)
+- `<domain>/XxxDto.kt`: Request/Response 데이터 전송 객체
+- `<domain>/XxxService.kt`: 핵심 비즈니스 로직 (트랜잭션 관리 및 도메인 흐름 제어)
+- `<domain>/Xxx.kt`: DB 스키마 맵핑 및 핵심 도메인 객체(엔티티)
+- `<domain>/XxxRepository.kt`: 데이터베이스 접근 인터페이스 (JPA / DAO)
+- 도메인 내부에서만 쓰는 하위 그룹은 서브패키지로(예: `auth/oauth/`의 카카오/애플 토큰 검증기) — 별도
+  도메인이 아니라 그 도메인의 내부 구현일 뿐이다.
+- 테스트(`src/test/kotlin`)도 동일 패턴: `<domain>/XxxServiceTest.kt`를 같은 `com.gy.smartorder.<domain>`
+  패키지에 둔다.
+
+도메인이 아닌 공통 영역은 그대로 최상위에 남는다:
 - `config`: 프레임워크 설정 및 타사 SDK 초기화
   - `config/security`: API 접근 권한 제어 및 Security FilterChain 설정
   - `config/passport`: JWT 토큰 발급, 파싱 및 신원 검증 모듈
-- `controllers`: API 엔드포인트 수신, 요청 파라미터 1차 검증 (`@Valid`)
-- `dtos`: Request/Response 데이터 전송 객체
-- `services`: 핵심 비즈니스 로직 (트랜잭션 관리 및 도메인 흐름 제어)
-- `entities`: DB 스키마 맵핑 및 핵심 도메인 객체
-- `repositories`: 데이터베이스 접근 인터페이스 (JPA / DAO)
 - `common`: 공통 예외 처리 (`GlobalExceptionHandler`), 공통 응답 규격, 유틸리티
 
 [Coding Conventions]
