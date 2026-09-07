@@ -78,7 +78,7 @@ class Order(
     @Column(name = "coupon_id")
     var couponId: Long? = null,
 
-    /** 적립(스탬프) 사용 여부. member 도메인이 아직 없어 지금은 값만 저장하고 할인 계산에는 반영하지 않는다. */
+    /** 적립(스탬프) 사용 여부. true면 `OrderService.createOrder()`가 `MemberService.redeemStamp()`로 소비하고 할인액을 totalPrice에 반영한다. */
     @Column(nullable = false)
     var useStamp: Boolean = false,
 
