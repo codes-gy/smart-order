@@ -1,6 +1,6 @@
 # 스마트오더 백엔드 진행 상황 (로컬 세션용)
 
-> 최종 갱신: 2026-09-07 (2.15절 — `.env` 실제 비밀키 git 트래킹 문제 해결, 커밋/PR 착수 전)
+> 최종 갱신: 2026-09-07 (2.16절 — 커밋 8개로 분리 완료 + `origin/feature/gy/auth`로 push 완료, PR 생성만 남음)
 > 기준 브랜치: `feature/gy/auth`
 > 이 문서는 로컬 Claude Code CLI 세션이 관리합니다. `BACKEND_ROADMAP.md`는 Cowork 세션이 별도로 관리하는
 > 문서라 이 branch(`feature/gy/auth`)에서 진행된 최신 작업이 아직 반영돼 있지 않습니다(거기엔 "Auth ❌ 미구현"으로
@@ -296,6 +296,28 @@
 - **검증**: `git check-ignore -v backend/.env` → 무시됨 확인, `backend/.env.example`은 무시되지 않고
   `git status`에 `??`로 정상 노출되는 것 확인. 로컬 `.env` 파일 자체는 삭제되지 않고 그대로 존재.
 - **5절 리스크 항목 해소**: 아래 리스크 목록의 `.env`/`JWT_SECRET` 항목을 해결 완료로 갱신.
+
+### 2.16 커밋 분리 + origin push — 완료
+- **배경**: 사용자가 "커밋하고 push해줘"로 명시 요청. 이 시점까지 이 브랜치는 커밋이 하나도 없었음(2.14절 참고).
+- **커밋 8개로 분리**(논리 단위별): JWT 인증 인프라 → Member 도메인 → Auth API(소셜/SMS/이메일 + 버그
+  수정분) → 매장 관리자 로그인/인가 → 빌드/설정/테스트 프로필 → `.env` 시크릿 정리 → Claude Code 툴링 설정 →
+  문서. 커밋 해시: `5e7686f`, `908127a`, `a6b3821`, `770b562`, `3927d02`, `aa0572f`, `362cd97`, `7265205`.
+- **커밋 중 발견한 함정**: 일부 파일이 이전 세션에서 `git add`만 해두고 커밋하지 않은 채로 계속 수정돼 있어서
+  (`git status` 접두사 `AM`/`RM`), 첫 커밋에서 `git add <경로들>` 후 `git commit`(pathspec 없이)을 실행했더니
+  내가 add하지 않은 다른 파일들(인덱스에 미리 stage돼 있던 것들, 예: `AuthService.kt`)까지 그 시점의 **오래된
+  인덱스 내용**으로 함께 커밋돼버림 — 워킹 트리엔 최신 내용(로그인 status 체크 수정분 등)이 그대로 있어서
+  데이터 손실은 없었지만, 첫 커밋에는 수정 전 코드가 들어감. 이후 커밋부터는 `git commit -- <경로들>`(파일을
+  pathspec으로 직접 지정, 인덱스 상태와 무관하게 현재 워킹 트리 내용만 커밋) 방식으로 바꿔서 해결 — 3번째
+  커밋(Auth API)에서 `AuthService.kt`가 최신(버그 수정 반영) 내용으로 올바르게 커밋된 것을 `git show`로 확인함.
+  최종적으로 8개 커밋 다 합친 결과물은 워킹 트리 최종 상태와 100% 일치(`git status` clean 확인).
+- **push 인증 이슈**: `git push`가 `could not read Username for 'https://github.com'`로 실패(HTTPS 인증
+  정보 없음). `gh auth login` 시도했으나 이 환경엔 `gh` CLI 자체가 미설치. `~/.ssh/id_ed25519`가 이미
+  GitHub 계정(`codes-gy`)에 등록돼 있는 것을 `ssh -T git@github.com`으로 확인하고, `origin` 리모트 URL을
+  HTTPS → SSH(`git@github.com:codes-gy/smart-order.git`)로 변경해 push 성공.
+- **검증**: 커밋 완료 후 `./gradlew clean test` 전체 통과(`BUILD SUCCESSFUL`, 회귀 없음). `git push -u origin
+  feature/gy/auth` 성공, 업스트림 추적 설정됨. GitHub이 PR 생성 링크를 안내함
+  (`https://github.com/codes-gy/smart-order/pull/new/feature/gy/auth`).
+- **다음 단계**: PR 생성만 남음(제목/본문 작성, `pr-generate` 에이전트 활용 가능) — 사용자 확인 후 진행.
 
 ## 4-1. 4절 항목 상태 — 전체 완료
 0~7번 전 항목 완료, 2.11절 `StoreControllerTest` 수정, 2.12절 소셜 토큰 서버 검증, 2.13절
