@@ -1,0 +1,33 @@
+# ==========================================
+# 테스트 전용 프로필 (`test`)
+# ==========================================
+# `@SpringBootTest`처럼 전체 ApplicationContext를 띄우는 테스트가 로컬 Postgres/Redis/Kafka
+# 없이도 동작하도록, `.env` 플레이스홀더에 의존하지 않고 값을 직접 명시한다.
+spring:
+  datasource:
+    driver-class-name: org.h2.Driver
+    url: jdbc:h2:mem:smartorder-test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  kafka:
+    bootstrap-servers: localhost:9092
+
+jwt:
+  secret: test-jwt-secret-test-jwt-secret-test-jwt-secret
+  access-token-expiration: 3600000
+  refresh-token-expiration: 1209600000
+
+oauth:
+  apple:
+    client-id: test-apple-client-id
