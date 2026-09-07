@@ -30,6 +30,13 @@ import java.time.LocalDateTime
 enum class MenuOptionType {
     SINGLE,
     MULTIPLE,
+    ;
+
+    companion object {
+        /** 프론트가 보내는 소문자 문자열("single"/"multiple")을 enum으로 변환한다. */
+        fun fromApiValue(value: String): MenuOptionType =
+            if (value.equals("multiple", ignoreCase = true)) MULTIPLE else SINGLE
+    }
 }
 
 @Entity
@@ -75,4 +82,11 @@ class MenuOptionGroup(
     @LastModifiedDate
     @Column(nullable = false)
     var updatedAt: LocalDateTime = LocalDateTime.now(),
-)
+) {
+    fun updateInfo(name: String, type: MenuOptionType, required: Boolean, displayOrder: Int) {
+        this.name = name
+        this.type = type
+        this.required = required
+        this.displayOrder = displayOrder
+    }
+}

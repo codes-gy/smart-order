@@ -1,6 +1,6 @@
 # 스마트오더 백엔드 진행 상황 (로컬 세션용)
 
-> 최종 갱신: 2026-09-08 (Cart 도메인 필요 여부 확인 완료 — 백엔드 구현 불필요로 결론)
+> 최종 갱신: 2026-09-08 (메뉴 옵션 관리자 CRUD 구현 완료 — 백엔드만 우선 구현)
 > 기준 브랜치: `feature/gy/member-reward` (base: `develop`, merge-base에 Coupon PR #6이 이미 병합돼 있음)
 > 이 문서는 로컬 Claude Code CLI 세션이 관리합니다. `BACKEND_ROADMAP.md`는 Cowork 세션이 별도로 관리하는
 > 문서이니 혼동하지 말 것. 이전 브랜치(`feature/gy/coupon`)의 작업 기록은 PR #6으로 병합 완료돼 이 문서에서는
@@ -15,6 +15,7 @@
 | Notification | ➖ 백엔드 구현 불필요 (확인 완료, 2026-09-08) | 프론트가 이미 있는 Order SSE + 브라우저 `Notification` API로 클라이언트 단에서만 처리(서버발 푸시 계약 없음) — 2.2절 참고 |
 | Event | ➖ 현재로선 백엔드 구현 불필요 (확인 완료, 2026-09-08) | 프론트 라우트/타입/API/mock 어디에도 대응 화면·계약이 없음(홈/배너 화면 자체가 없음) — 2.3절 참고 |
 | Cart | ➖ 백엔드 구현 불필요 (확인 완료, 2026-09-08) | Zustand `persist`로 로컬스토리지에만 보관, 체크아웃 시 Order 검증/생성 API로 바로 변환돼 서버 저장 필요 없음 — 2.4절 참고 |
+| 메뉴 옵션 관리자 CRUD | ✅ 백엔드만 구현 완료 (이 브랜치, 2026-09-08) | 프론트 대응 화면/계약 없음(관리자 대시보드는 메뉴 전체 품절 토글만 존재) — 사용자 확인 하에 백엔드 먼저 구현, 프론트 연동은 추후 별도 — 2.5절 참고 |
 
 ## 2. 지금까지 한 일 (이 브랜치)
 
@@ -96,6 +97,40 @@
 - **결론**: Cart는 임시 UI 상태일 뿐 서버가 관여할 지점이 없음. 신규 구현 불필요.
 - 후속 조치 없음(코드 변경 없음).
 
+### 2.5 메뉴 옵션 관리자 CRUD — 백엔드만 구현 완료
+- **범위 확인**: 착수 전 프론트 계약을 확인한 결과, `store-admin` 대시보드(`useStoreAdminMenu.ts`,
+  `MenuSoldOutRow.tsx`)에는 메뉴 통째 품절 토글만 있고 옵션 그룹/선택지 단위 CRUD 화면·API 계약
+  (`menuApi`/`menu.types.ts`)이 없음을 확인. `BACKEND_ROADMAP.md`에도 "(필요해지면)"으로 조건부 표기돼
+  있어 Notification/Event/Cart처럼 "보류"로 남길지 사용자에게 확인 → **"백엔드만 먼저 구현"**으로 결정
+  (Category/Menu CRUD와 동일 패턴, 프론트 연동은 화면이 생기면 별도 진행).
+- `entities/menu/MenuOptionGroup.kt`: `MenuOptionType`에 `fromApiValue(value: String)` companion 메서드
+  추가(프론트가 보낼 소문자 "single"/"multiple" 문자열 → enum 변환, 기존 응답측 변환 로직과 대칭).
+  `MenuOptionGroup`에 `updateInfo(name, type, required, displayOrder)` 추가.
+- `entities/menu/MenuOptionChoice.kt`: `updateInfo(label, priceDelta, displayOrder)`, `updateSoldOut(isSoldOut)`
+  추가.
+- `repositories/menu/MenuOptionGroupRepository.kt`, `MenuOptionChoiceRepository.kt` 신설(단순
+  `JpaRepository<Entity, Long>`, 파생 쿼리 불필요).
+- `dtos/menu/MenuDto.kt`: `MenuOptionGroupCreateRequest`/`UpdateRequest`,
+  `MenuOptionChoiceCreateRequest`/`UpdateRequest`/`SoldOutUpdateRequest` 추가(기존 `MenuOptionGroupResponse`/
+  `MenuOptionChoiceResponse`는 그대로 재사용).
+- `services/menu/MenuOptionService.kt` 신설(기존 `MenuService`에 얹지 않고 별도 서비스로 분리 — 옵션
+  그룹/선택지 CRUD라는 별개 책임이라 `backend/CLAUDE.md`의 "하나의 클래스는 하나의 책임" 원칙에 맞춤):
+  `createOptionGroup`/`updateOptionGroup`/`deleteOptionGroup`,
+  `createOptionChoice`/`updateOptionChoice`/`updateOptionChoiceSoldOut`/`deleteOptionChoice`. 존재하지
+  않는 메뉴/그룹/선택지는 각각 `MENU_NOT_FOUND`/`MENU_OPTION_GROUP_NOT_FOUND`/`MENU_OPTION_CHOICE_NOT_FOUND`
+  `NotFoundException`으로 처리.
+- `controllers/menu/MenuOptionController.kt` 신설. 라우트는 Category 컨트롤러 패턴(생성은 부모 리소스
+  아래 nested, 수정/삭제/품절처리는 자원 id로 flat)을 그대로 따름:
+  - `POST /menus/{menuId}/option-groups`, `PUT /option-groups/{groupId}`, `DELETE /option-groups/{groupId}`
+  - `POST /option-groups/{groupId}/choices`, `PUT /option-choices/{choiceId}`,
+    `PATCH /option-choices/{choiceId}/sold-out`, `DELETE /option-choices/{choiceId}`
+- **검증**: `MenuOptionServiceTest` 신규 작성(6건 — 생성 시 소문자 type→enum 변환, 존재하지 않는 메뉴로
+  생성 시 예외, 그룹 수정, 그룹 삭제, 선택지 품절 처리, 존재하지 않는 선택지 수정 시 예외).
+  `JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ./gradlew test` 전체 통과(`BUILD SUCCESSFUL`, 92개 테스트
+  전부 성공, 기존 테스트 회귀 없음).
+- 후속 조치: 프론트에 옵션 관리자 화면/`menuApi` 계약이 추가되면 그때 연동. 아직 커밋/PR 생성 전 —
+  다음 세션에서 이어서 진행하거나 바로 커밋해도 됨.
+
 ## 3. 다음에 할 일 (우선순위 순, `BACKEND_ROADMAP.md` 기준)
 
 ### [x] 0. Coupon 도메인 — 완료 (PR #6, `develop`에 병합됨)
@@ -113,8 +148,8 @@
 ### [x] 4. Cart 도메인 — 확인 완료, 2026-09-08: 백엔드 구현 불필요
 - 2.4절 참고. 코드 변경 없음, 다음 우선순위(메뉴 옵션 관리자 CRUD)로 진행.
 
-### [ ] 5. 메뉴 옵션 관리자 CRUD
-- 매장 관리자가 옵션 그룹/선택지를 등록·수정·삭제·품절처리 하는 기능(조회/주문 반영은 이미 완료).
+### [x] 5. 메뉴 옵션 관리자 CRUD — 백엔드만 구현 완료, 2026-09-08 (이 브랜치)
+- 2.5절 참고. 커밋/PR은 아직 안 함. 프론트 연동은 화면이 생기면 별도 진행.
 
 ### [ ] 6. 인프라/운영
 - 마이그레이션 도구(Flyway/Liquibase) 도입 — prod 프로필(`ddl-auto: validate`)용 스키마 스크립트 없음.

@@ -41,4 +41,14 @@ class MenuOptionChoice(
 
     @Column(nullable = false)
     var displayOrder: Int = 0,
-)
+) {
+    fun updateInfo(label: String, priceDelta: Int, displayOrder: Int) {
+        this.label = label
+        this.priceDelta = priceDelta
+        this.displayOrder = displayOrder
+    }
+
+    fun updateSoldOut(isSoldOut: Boolean) {
+        this.isSoldOut = isSoldOut
+    }
+}
