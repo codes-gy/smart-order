@@ -11,6 +11,7 @@ import com.gy.smartorder.repositories.member.MemberRepository
 import com.gy.smartorder.repositories.store.StoreAccountRepository
 import com.gy.smartorder.repositories.store.StoreRepository
 import com.gy.smartorder.services.auth.oauth.SocialTokenVerifier
+import com.gy.smartorder.services.coupon.CouponService
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.security.crypto.password.PasswordEncoder
@@ -27,6 +28,7 @@ class AuthService(
     private val passwordEncoder: PasswordEncoder,
     private val jwtTokenProvider: JwtTokenProvider,
     private val redisTemplate: StringRedisTemplate,
+    private val couponService: CouponService,
     socialTokenVerifiers: List<SocialTokenVerifier>,
 ) {
 
@@ -71,6 +73,7 @@ class AuthService(
         )
 
         val memberId = requireNotNull(member.id)
+        couponService.issueWelcomeCoupon(memberId)
         return AuthDto.LoginResponse(
             accessToken = jwtTokenProvider.generateAccessToken(memberId, member.role.name),
             refreshToken = jwtTokenProvider.generateRefreshToken(memberId),
@@ -106,7 +109,8 @@ class AuthService(
             ?: throw BadRequestException("UNSUPPORTED_SOCIAL_PROVIDER", "지원하지 않는 소셜 로그인 제공자입니다.")
         val socialId = verifier.verify(request.accessToken)
 
-        val member = memberRepository.findBySocialProviderAndSocialId(request.provider, socialId)
+        val existingMember = memberRepository.findBySocialProviderAndSocialId(request.provider, socialId)
+        val member = existingMember
             ?: memberRepository.save(
                 Member(
                     socialProvider = request.provider,
@@ -120,6 +124,7 @@ class AuthService(
         }
 
         val memberId = requireNotNull(member.id)
+        issueWelcomeCouponForNewMember(existingMember, memberId)
         return AuthDto.SocialLoginResponse(
             user = AuthDto.AuthUserResponse.from(member, isGuest = false),
             tokens = AuthDto.LoginResponse(
@@ -177,7 +182,8 @@ class AuthService(
         }
         redisTemplate.delete(key)
 
-        val member = memberRepository.findByPhoneNumber(request.phoneNumber)
+        val existingMember = memberRepository.findByPhoneNumber(request.phoneNumber)
+        val member = existingMember
             ?: memberRepository.save(
                 Member(
                     phoneNumber = request.phoneNumber,
@@ -190,6 +196,7 @@ class AuthService(
         }
 
         val memberId = requireNotNull(member.id)
+        issueWelcomeCouponForNewMember(existingMember, memberId)
         return AuthDto.SocialLoginResponse(
             user = AuthDto.AuthUserResponse.from(member, isGuest = true),
             tokens = AuthDto.LoginResponse(
@@ -218,5 +225,12 @@ class AuthService(
             storeName = store.name,
             accessToken = jwtTokenProvider.generateAccessToken(storeAccount.storeId, JwtTokenProvider.ROLE_STORE_ADMIN),
         )
+    }
+
+    // socialLogin/verifySms 둘 다 find-or-create 직후 이걸 호출한다 — 재로그인(기존 회원)에는 재발급하지 않는다.
+    private fun issueWelcomeCouponForNewMember(existingMember: Member?, memberId: Long) {
+        if (existingMember == null) {
+            couponService.issueWelcomeCoupon(memberId)
+        }
     }
 }

@@ -59,6 +59,10 @@ class Order(
     @JoinColumn(name = "store_id", nullable = false)
     var store: Store,
 
+    /** 주문한 회원 ID. JWT 인증 principal(`@AuthenticationPrincipal`)에서 그대로 가져온다. */
+    @Column(name = "member_id", nullable = false)
+    var memberId: Long,
+
     @Column(nullable = false)
     var totalPrice: Int = 0,
 
@@ -70,7 +74,7 @@ class Order(
     @Column(nullable = false, length = 20)
     var packagingType: PackagingType = PackagingType.TAKE_OUT,
 
-    /** 적용한 쿠폰 ID. coupon 도메인이 아직 없어 지금은 값만 저장하고 할인 계산에는 반영하지 않는다. */
+    /** 적용한 쿠폰 ID. 실제 할인 반영/소비 처리는 `OrderService.createOrder()`가 `CouponService.redeem()`으로 한다. */
     @Column(name = "coupon_id")
     var couponId: Long? = null,
 

@@ -7,6 +7,7 @@ import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -39,10 +40,11 @@ class OrderController(
      */
     @PostMapping
     fun createOrder(
+        @AuthenticationPrincipal memberId: Long,
         @RequestHeader(value = "X-Idempotency-Key", required = false) idempotencyKeyHeader: String?,
         @Valid @RequestBody req: OrderDto.OrderCreateRequest,
     ): ResponseEntity<OrderDto.OrderCreateResponse> {
-        val res = orderService.createOrder(req, idempotencyKeyHeader)
+        val res = orderService.createOrder(req, idempotencyKeyHeader, memberId)
         return ResponseEntity.status(HttpStatus.CREATED).body(res)
     }
 

@@ -65,7 +65,7 @@ class OrderDto {
         @field:NotNull(message = "포장 방식은 필수입니다.")
         val packagingType: PackagingType?,
 
-        /** coupon 도메인 구현 전까지는 값만 저장하고 할인 계산에는 반영하지 않는다. */
+        /** 적용할 쿠폰 ID. `OrderService.createOrder()`가 `CouponService.redeem()`으로 소유/유효성 검증 후 할인에 반영한다. */
         val couponId: Long? = null,
 
         /** member(적립) 도메인 구현 전까지는 값만 저장하고 할인 계산에는 반영하지 않는다. */

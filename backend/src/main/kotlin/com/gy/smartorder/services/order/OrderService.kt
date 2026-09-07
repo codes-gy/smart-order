@@ -12,6 +12,7 @@ import com.gy.smartorder.entities.order.OrderStatus
 import com.gy.smartorder.repositories.menu.MenuRepository
 import com.gy.smartorder.repositories.order.OrderRepository
 import com.gy.smartorder.repositories.store.StoreRepository
+import com.gy.smartorder.services.coupon.CouponService
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
@@ -25,6 +26,7 @@ class OrderService(
     private val storeRepository: StoreRepository,
     private val menuRepository: MenuRepository,
     private val orderEventPublisher: OrderEventPublisher,
+    private val couponService: CouponService,
 )
 {
     /** 주문 생성 직전 재고/판매상태를 서버 기준으로 재검증한다 (PRD 3.3, F-03). */
@@ -34,7 +36,11 @@ class OrderService(
     }
 
     @Transactional
-    fun createOrder(req: OrderDto.OrderCreateRequest, idempotencyKeyHeader: String?): OrderDto.OrderCreateResponse {
+    fun createOrder(
+        req: OrderDto.OrderCreateRequest,
+        idempotencyKeyHeader: String?,
+        memberId: Long,
+    ): OrderDto.OrderCreateResponse {
         val idempotencyKey = idempotencyKeyHeader?.takeIf { it.isNotBlank() }
             ?: req.idempotencyKey?.takeIf { it.isNotBlank() }
             ?: throw BadRequestException(
@@ -62,6 +68,7 @@ class OrderService(
 
         val order = Order(
             store = store,
+            memberId = memberId,
             packagingType = req.packagingType!!,
             couponId = req.couponId,
             useStamp = req.useStamp,
@@ -84,8 +91,19 @@ class OrderService(
             order.addOrderItem(orderItem)
         }
 
-        // coupon/member(적립) 도메인이 아직 없어 할인은 반영하지 않는다. 아이템 합계(옵션 가격 포함)를 그대로 총액으로 쓴다.
-        order.totalPrice = order.orderItems.sumOf { it.totalPrice }
+        // useStamp 할인은 member(적립) 도메인이 아직 없어 반영하지 않는다 (PROGRESS.md 참고).
+        val itemsAmount = order.orderItems.sumOf { it.totalPrice }
+        val couponDiscount = try {
+            req.couponId?.let { couponService.redeem(memberId, it) } ?: 0
+        } catch (ex: ConflictException) {
+            // 동일 idempotencyKey로 정확히 동시에 들어온 재요청이 먼저 이 쿠폰을 소비하고 주문까지 커밋했을 수 있다.
+            // 그 경우 COUPON_ALREADY_USED로 에러를 내는 대신, 방금 만들어진 그 주문을 멱등하게 반환한다.
+            orderRepository.findByIdempotencyKey(idempotencyKey)?.let { existing ->
+                return OrderDto.OrderCreateResponse(orderId = existing.id.toString(), totalAmount = existing.totalPrice)
+            }
+            throw ex
+        }
+        order.totalPrice = (itemsAmount - couponDiscount).coerceAtLeast(0)
 
         val savedOrder = try {
             orderRepository.save(order)
