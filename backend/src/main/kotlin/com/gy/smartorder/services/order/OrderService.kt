@@ -13,6 +13,7 @@ import com.gy.smartorder.repositories.menu.MenuRepository
 import com.gy.smartorder.repositories.order.OrderRepository
 import com.gy.smartorder.repositories.store.StoreRepository
 import com.gy.smartorder.services.coupon.CouponService
+import com.gy.smartorder.services.member.MemberService
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
@@ -27,6 +28,7 @@ class OrderService(
     private val menuRepository: MenuRepository,
     private val orderEventPublisher: OrderEventPublisher,
     private val couponService: CouponService,
+    private val memberService: MemberService,
 )
 {
     /** 주문 생성 직전 재고/판매상태를 서버 기준으로 재검증한다 (PRD 3.3, F-03). */
@@ -91,19 +93,21 @@ class OrderService(
             order.addOrderItem(orderItem)
         }
 
-        // useStamp 할인은 member(적립) 도메인이 아직 없어 반영하지 않는다 (PROGRESS.md 참고).
         val itemsAmount = order.orderItems.sumOf { it.totalPrice }
-        val couponDiscount = try {
-            req.couponId?.let { couponService.redeem(memberId, it) } ?: 0
+        val (couponDiscount, stampDiscount) = try {
+            val coupon = req.couponId?.let { couponService.redeem(memberId, it) } ?: 0
+            val stamp = if (req.useStamp) memberService.redeemStamp(memberId) else 0
+            coupon to stamp
         } catch (ex: ConflictException) {
-            // 동일 idempotencyKey로 정확히 동시에 들어온 재요청이 먼저 이 쿠폰을 소비하고 주문까지 커밋했을 수 있다.
-            // 그 경우 COUPON_ALREADY_USED로 에러를 내는 대신, 방금 만들어진 그 주문을 멱등하게 반환한다.
+            // 동일 idempotencyKey로 정확히 동시에 들어온 재요청이 먼저 쿠폰/스탬프를 소비하고 주문까지
+            // 커밋했을 수 있다. 그 경우 COUPON_ALREADY_USED/STAMP_NOT_ENOUGH로 에러를 내는 대신,
+            // 방금 만들어진 그 주문을 멱등하게 반환한다.
             orderRepository.findByIdempotencyKey(idempotencyKey)?.let { existing ->
                 return OrderDto.OrderCreateResponse(orderId = existing.id.toString(), totalAmount = existing.totalPrice)
             }
             throw ex
         }
-        order.totalPrice = (itemsAmount - couponDiscount).coerceAtLeast(0)
+        order.totalPrice = (itemsAmount - couponDiscount - stampDiscount).coerceAtLeast(0)
 
         val savedOrder = try {
             orderRepository.save(order)
@@ -133,7 +137,12 @@ class OrderService(
     @Transactional
     fun updateOrderStatus(orderId: Long, req: OrderDto.OrderStatusUpdateRequest): OrderDto.OrderResponse {
         val order = findOrderOrThrow(orderId)
+        // 이전 상태가 이미 PICKED_UP이면(상태 업데이트 재요청 등) 중복 적립하지 않는다.
+        val justPickedUp = order.status != OrderStatus.PICKED_UP && req.status == OrderStatus.PICKED_UP
         order.updateStatus(req.status!!)
+        if (justPickedUp) {
+            memberService.earnStamp(order.memberId)
+        }
         // @LastModifiedDate(updatedAt)를 지금 시점에 반영해, 뒤이어 만드는 SSE 이벤트의 시각이 정확하게 한다.
         orderRepository.flush()
         orderEventPublisher.publish(orderId, OrderDto.OrderTrackingEvent.from(order))
