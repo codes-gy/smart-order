@@ -1,4 +1,4 @@
-package com.gy.smartorder.entities.auth
+package com.gy.smartorder.entities.member
 
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -14,6 +14,7 @@ import jakarta.persistence.UniqueConstraint
 import org.springframework.data.annotation.CreatedDate
 import org.springframework.data.annotation.LastModifiedDate
 import org.springframework.data.jpa.domain.support.AuditingEntityListener
+import com.fasterxml.jackson.annotation.JsonCreator
 import java.time.LocalDateTime
 
 
@@ -33,7 +34,14 @@ enum class SocialProvider {
     KAKAO,
     APPLE,
     NAVER,
-    GOOGLE,
+    GOOGLE;
+
+    companion object {
+        // 프론트는 소문자("kakao"/"apple")로 보내므로 대소문자 구분 없이 매칭한다.
+        @JsonCreator
+        @JvmStatic
+        fun from(value: String): SocialProvider = valueOf(value.uppercase())
+    }
 }
 
 @Entity
@@ -108,5 +116,9 @@ class Member(
     fun updateStatus(status: MemberStatus) {
         this.status = status
     }
+
+    // email/social이 모두 없다는 것은 SMS 인증만으로 provision된 비회원(게스트) 계정이라는 뜻이다.
+    val isGuest: Boolean
+        get() = email == null && socialProvider == null
 
 }
