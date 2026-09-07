@@ -1,6 +1,6 @@
 # 스마트오더 백엔드 진행 상황 (로컬 세션용)
 
-> 최종 갱신: 2026-09-08 (PR #13 생성 완료 — Member 적립/스탬프 도메인, 리뷰/머지 대기)
+> 최종 갱신: 2026-09-08 (Notification 도메인 필요 여부 확인 완료 — 백엔드 구현 불필요로 결론)
 > 기준 브랜치: `feature/gy/member-reward` (base: `develop`, merge-base에 Coupon PR #6이 이미 병합돼 있음)
 > 이 문서는 로컬 Claude Code CLI 세션이 관리합니다. `BACKEND_ROADMAP.md`는 Cowork 세션이 별도로 관리하는
 > 문서이니 혼동하지 말 것. 이전 브랜치(`feature/gy/coupon`)의 작업 기록은 PR #6으로 병합 완료돼 이 문서에서는
@@ -12,6 +12,7 @@
 | :--- | :--- | :--- |
 | Auth / Member / Store / Category / Menu / Order / Payment / Coupon | ✅ `develop` 기준 구현됨 | 이번 브랜치 시작 시점에 이미 병합돼 있음 |
 | Member 적립/스탬프 | ✅ 구현 완료 (이 브랜치) | 결제 승인 시 자동 적립 + 주문 시 소비(할인 반영) |
+| Notification | ➖ 백엔드 구현 불필요 (확인 완료, 2026-09-08) | 프론트가 이미 있는 Order SSE + 브라우저 `Notification` API로 클라이언트 단에서만 처리(서버발 푸시 계약 없음) — 2.2절 참고 |
 
 ## 2. 지금까지 한 일 (이 브랜치)
 
@@ -53,6 +54,20 @@
   있었고, 이번에 `gh pr create`로 PR 생성까지 완료함(base `develop` ← head `feature/gy/member-reward`) —
   **[PR #13](https://github.com/codes-gy/smart-order/pull/13)**.
 
+### 2.2 Notification 도메인 — 필요 여부 확인 완료: 백엔드 구현 불필요
+- 프론트 계약(`frontend/src/api/`, `frontend/src/types/`)에 `notificationApi`/`notification.types`/
+  `notificationMock`이 전혀 없음을 확인.
+- 유일한 관련 코드는 `frontend/src/hooks/usePushNotificationPermission.ts` + `OrderTrackingRouter.tsx`:
+  브라우저 `Notification` Web API를 그대로 쓰는 클라이언트 전용 데모이며, FCM/APNs 토큰 등록이나 Web Push
+  구독 로직이 없음. 이미 존재하는 Order SSE(`GET /orders/{orderId}/events`)의 새 상태 이벤트를 받아 탭이
+  백그라운드일 때 `new Notification(...)`으로 로컬 알림만 띄움(코드 주석: "실제 푸시 서버(Web Push) 없이도
+  픽업 준비 완료 시 포그라운드 알림을 데모할 수 있도록 한다").
+- **결론**: 서버발 푸시 트리거/발송 API, FCM 연동 등 별도 Notification 도메인/엔드포인트 불필요. 이미
+  구현된 Order SSE만으로 프론트 요구사항이 충족됨. PRD 문서가 저장소에 없어 교차 검증은 못 했으나, 프론트
+  mock/타입이 소스 오브 트루스라는 원칙(`CLAUDE.md`)에 따라 확정.
+- 후속 조치 없음(코드 변경 없음). `BACKEND_ROADMAP.md`도 병행 동기화 필요(Cowork 세션 관리 문서라 여기서는
+  기록만 남김).
+
 ## 3. 다음에 할 일 (우선순위 순, `BACKEND_ROADMAP.md` 기준)
 
 ### [x] 0. Coupon 도메인 — 완료 (PR #6, `develop`에 병합됨)
@@ -61,8 +76,8 @@
 ### [x] 1. Member 적립/스탬프 도메인 — 완료, 2026-09-07 (이 브랜치)
 - 2.1절 참고. PR #13 생성 완료(2026-09-08), 리뷰/머지 대기 중.
 
-### [ ] 2. Notification 도메인
-- 결제/주문 상태 변경 시 서버발 푸시 트리거 필요 여부부터 재확인.
+### [x] 2. Notification 도메인 — 확인 완료, 2026-09-08: 백엔드 구현 불필요
+- 2.2절 참고. 코드 변경 없음, 다음 우선순위(Event)로 진행.
 
 ### [ ] 3. Event 도메인
 - PRD상 정확한 용도 확인 필요. 우선순위 가장 낮음.
