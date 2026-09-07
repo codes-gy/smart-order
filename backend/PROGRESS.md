@@ -1,8 +1,8 @@
 # 스마트오더 백엔드 진행 상황 (로컬 세션용)
 
-> 최종 갱신: 2026-09-07 (1.4절 — Event 도메인 PRD 근거 부족으로 보류)
-> 기준 브랜치: `feature/gy/event` (base: `develop`, merge-base에 PR #5 Auth, PR #6 Coupon, PR #7 Member
-> 적립/스탬프, PR #8 Notification 결론이 이미 병합돼 있음)
+> 최종 갱신: 2026-09-07 (1.5절 — Cart 도메인 "백엔드 불필요" 확인 완료)
+> 기준 브랜치: `feature/gy/cart` (base: `develop`, merge-base에 PR #5 Auth, PR #6 Coupon, PR #7 Member
+> 적립/스탬프, PR #8 Notification, PR #9 Event 보류 결론이 이미 병합돼 있음)
 > 이 문서는 로컬 Claude Code CLI 세션이 관리합니다. `BACKEND_ROADMAP.md`는 Cowork 세션이 별도로 관리하는
 > 문서이니 혼동하지 말 것. 이전 브랜치들의 작업 기록은 각각 PR #5~#8로 병합 완료돼 이 문서에서는 정리했다
 > — 상세 이력은 `git log`/PR 참고. PR 본문은 앞으로 `.github/PULL_REQUEST_TEMPLATE.md` 형식(작업
@@ -26,29 +26,36 @@
 | Coupon | ✅ `develop` 기준 구현됨 (PR #6) | 회원가입 시 웰컴 쿠폰 자동 발급 + 주문 시 소비 |
 | Member 적립/스탬프 | ✅ `develop` 기준 구현됨 (PR #7) | 주문 픽업완료 시 1개 적립, 10개 모으면 4500원 정액 할인으로 사용 |
 | Notification | ➖ 백엔드 작업 불필요로 확인 (PR #8) | 프론트가 기존 SSE + 브라우저 Notification API만으로 이미 완결 구현 |
-| Event | ⏸ 보류 (이 브랜치) | PRD 근거 없어 설계 불가 — 3절 참고 |
+| Event | ⏸ 보류 (PR #9) | PRD 근거 없어 설계 불가 — 3절 참고 |
+| Cart | ➖ 백엔드 작업 불필요로 확인 (이 브랜치) | 프론트가 Zustand `persist`(localStorage)로 클라이언트에만 보관, 서버 동기화 없음 |
 
 ## 2. 지금까지 한 일 (이 브랜치)
 
-### 2.1 Event 도메인 조사 — PRD 근거 부족으로 보류, 구현하지 않음
-- **작업 안 함**: 코드 변경 없음.
-- **조사 내용**: `BACKEND_ROADMAP.md`에 "Event | ❌ 미구현 | PRD상 용도 불명확, 우선순위 낮음" 한 줄 외
-  아무 설명이 없음. 프론트엔드에 이벤트/프로모션 관련 페이지·타입·mock이 전혀 없음(`이벤트`, `promotion`,
-  `banner` 등 전체 검색 결과 없음). 저장소 어디에도 PRD 원문이 없어(`find . -iname "*PRD*"` 결과 없음)
-  Notification 때처럼 프론트 코드로 용도를 확정할 근거 자체가 없음.
-- **사용자 확인**: 근거 없이 설계를 추측해서 구현하지 않고, 보류한 채 우선순위 4번(Cart 재확인)으로
-  넘어가기로 결정. Event는 PRD 맥락이 확보되면 그때 다시 착수.
+### 2.1 Cart 도메인 — "백엔드 작업 불필요" 확인, 결론만 문서화
+- **작업 안 함**: 코드 변경 없음. `BACKEND_ROADMAP.md`가 남겨둔 "프론트가 Zustand로 클라이언트에만 보관
+  중 — 백엔드 API 자체가 불필요할 가능성" 재확인 요청에 대한 답을 프론트 코드로 확정했다.
+- **근거**:
+  - `frontend/src/stores/cartStore.ts`: Zustand `persist` 미들웨어로 `CART_STORAGE_KEY` 하에
+    `localStorage`에만 저장하는 순수 클라이언트 상태. 서버 호출이 전혀 없음.
+  - `frontend/src/hooks/useCart.ts`: `cartStore`를 감싸 파생값(합계/개수)만 계산하는 훅, 마찬가지로
+    API 호출 없음.
+  - 저장소 전체에 `cartApi.ts` 같은 파일이 없고, `/cart`로 잡히는 것도 Next.js 페이지 라우트뿐 — 백엔드
+    REST 호출은 전무.
+  - 체크아웃 시점에는 장바구니 내용을 그대로 `POST /orders/validate` → `POST /orders`(이미 구현된 Order
+    도메인)로 변환해서 보내는 구조라, 장바구니 자체를 서버에 저장/동기화할 필요가 없음.
+- **결론**: Cart 전용 백엔드 API(도메인)는 불필요. 별도 확인 질문 없이 코드 근거만으로 결론 확정(Notification
+  때와 동일한 패턴).
 
 ## 3. 다음에 할 일 (우선순위 순, `BACKEND_ROADMAP.md` 기준)
 
 ### [x] 0. Coupon 도메인 — 완료 (PR #6, `develop` 병합됨)
 ### [x] 1. Member 적립/스탬프 도메인 — 완료 (PR #7, `develop` 병합됨)
 ### [x] 2. Notification 도메인 — 백엔드 작업 불필요로 확인 (PR #8, `develop` 병합됨)
-### [보류] 3. Event 도메인 — PRD 근거 부족, 2026-09-07 (이 브랜치)
-- 2.1절 참고. PRD 맥락이 확보되기 전까지는 착수하지 않음.
+### [보류] 3. Event 도메인 — PRD 근거 부족 (PR #9, `develop` 병합됨)
+- PRD 맥락이 확보되기 전까지는 착수하지 않음.
 
-### [ ] 4. Cart 도메인 필요 여부 재확인
-- 프론트가 Zustand로 클라이언트에만 보관 중 — 백엔드 API 자체가 불필요할 가능성.
+### [x] 4. Cart 도메인 — 백엔드 작업 불필요로 확인, 2026-09-07 (이 브랜치)
+- 2.1절 참고. 프론트가 localStorage에만 저장, 서버 동기화 없음.
 
 ### [ ] 5. 메뉴 옵션 관리자 CRUD
 - 매장 관리자가 옵션 그룹/선택지를 등록·수정·삭제·품절처리 하는 기능(조회/주문 반영은 이미 완료).
