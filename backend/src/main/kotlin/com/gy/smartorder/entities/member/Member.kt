@@ -91,6 +91,8 @@ class Member(
     @Column(nullable = false)
     var status: MemberStatus = MemberStatus.ACTIVE,
 
+    @Column(name = "stamp_count", nullable = false)
+    var stampCount: Int = 0,
 
 )
 {
@@ -115,6 +117,15 @@ class Member(
 
     fun updateStatus(status: MemberStatus) {
         this.status = status
+    }
+
+    fun addStamp() {
+        stampCount += 1
+    }
+
+    /** 스탬프 리워드 사용 처리. 개수 검증(목표치 도달 여부)은 MemberService에서 한다. */
+    fun useStampReward(cost: Int) {
+        stampCount -= cost
     }
 
     // email/social이 모두 없다는 것은 SMS 인증만으로 provision된 비회원(게스트) 계정이라는 뜻이다.

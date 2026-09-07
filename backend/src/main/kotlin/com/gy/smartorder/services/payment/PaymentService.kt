@@ -6,6 +6,7 @@ import com.gy.smartorder.dtos.payment.PaymentDto
 import com.gy.smartorder.entities.payment.Payment
 import com.gy.smartorder.repositories.order.OrderRepository
 import com.gy.smartorder.repositories.payment.PaymentRepository
+import com.gy.smartorder.services.member.MemberService
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
@@ -16,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional
 class PaymentService(
     private val paymentRepository: PaymentRepository,
     private val orderRepository: OrderRepository,
+    private val memberService: MemberService,
 ) {
 
     @Transactional
@@ -55,7 +57,11 @@ class PaymentService(
         )
 
         val savedPayment = try {
-            paymentRepository.save(payment)
+            val saved = paymentRepository.save(payment)
+            // 스탬프는 결제가 실제로 새로 승인된 이 경로에서만 적립한다 (동시 재시도로 기존 결제를 재사용하는
+            // 아래 catch 분기는 이미 한 번 적립됐으므로 중복 적립하지 않는다).
+            memberService.earnStamp(order.memberId)
+            saved
         } catch (ex: DataIntegrityViolationException) {
             // 동시에 같은 주문/결제 키로 요청이 들어온 경쟁 상태: 새로 만들지 않고 기존 결제를 찾아 반환한다.
             paymentRepository.findByPaymentKey(paymentKey)
