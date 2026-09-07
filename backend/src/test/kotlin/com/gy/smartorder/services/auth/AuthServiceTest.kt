@@ -12,6 +12,7 @@ import com.gy.smartorder.repositories.member.MemberRepository
 import com.gy.smartorder.repositories.store.StoreAccountRepository
 import com.gy.smartorder.repositories.store.StoreRepository
 import com.gy.smartorder.services.auth.oauth.SocialTokenVerifier
+import com.gy.smartorder.services.coupon.CouponService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -47,6 +48,7 @@ class AuthServiceTest {
     private lateinit var redisTemplate: StringRedisTemplate
     private lateinit var valueOperations: ValueOperations<String, String>
     private lateinit var kakaoTokenVerifier: SocialTokenVerifier
+    private lateinit var couponService: CouponService
     private lateinit var authService: AuthService
 
     @BeforeEach
@@ -62,6 +64,7 @@ class AuthServiceTest {
 
         kakaoTokenVerifier = mock(SocialTokenVerifier::class.java)
         given(kakaoTokenVerifier.provider).willReturn(SocialProvider.KAKAO)
+        couponService = mock(CouponService::class.java)
 
         authService = AuthService(
             memberRepository,
@@ -70,6 +73,7 @@ class AuthServiceTest {
             passwordEncoder,
             jwtTokenProvider,
             redisTemplate,
+            couponService,
             listOf(kakaoTokenVerifier),
         )
     }
@@ -103,6 +107,7 @@ class AuthServiceTest {
 
         assertThat(response.accessToken).isEqualTo("access-token")
         assertThat(response.refreshToken).isEqualTo("refresh-token")
+        verify(couponService).issueWelcomeCoupon(1L)
     }
 
     @Test
@@ -190,6 +195,30 @@ class AuthServiceTest {
 
         assertThat(response.tokens.accessToken).isEqualTo("access-token")
         verify(memberRepository, never()).save(any(Member::class.java))
+        verify(couponService, never()).issueWelcomeCoupon(anyLong())
+    }
+
+    @Test
+    fun `소셜 토큰 검증에 성공했지만 신규 회원이면 회원을 생성하고 웰컴 쿠폰을 발급한다`() {
+        val request = AuthDto.SocialLoginRequest(provider = SocialProvider.KAKAO, accessToken = "kakao-access-token")
+        given(kakaoTokenVerifier.verify("kakao-access-token")).willReturn("new-kakao-id")
+        given(memberRepository.findBySocialProviderAndSocialId(SocialProvider.KAKAO, "new-kakao-id"))
+            .willReturn(null)
+        given(memberRepository.save(any(Member::class.java))).willAnswer { invocation ->
+            val saved = invocation.arguments[0] as Member
+            Member(
+                id = 2L,
+                socialProvider = saved.socialProvider,
+                socialId = saved.socialId,
+                nickname = saved.nickname,
+            )
+        }
+        given(jwtTokenProvider.generateAccessToken(2L, "USER")).willReturn("access-token")
+        given(jwtTokenProvider.generateRefreshToken(2L)).willReturn("refresh-token")
+
+        authService.socialLogin(request)
+
+        verify(couponService).issueWelcomeCoupon(2L)
     }
 
     @Test
@@ -209,6 +238,37 @@ class AuthServiceTest {
 
         assertThatThrownBy { authService.socialLogin(request) }
             .isInstanceOf(BadRequestException::class.java)
+    }
+
+    @Test
+    fun `SMS 인증 성공 시 신규 회원이면 게스트 회원을 생성하고 웰컴 쿠폰을 발급한다`() {
+        val request = AuthDto.VerifySmsRequest(phoneNumber = "010-1234-5678", code = "1234")
+        given(valueOperations.get("sms:auth:010-1234-5678")).willReturn("1234")
+        given(memberRepository.findByPhoneNumber("010-1234-5678")).willReturn(null)
+        given(memberRepository.save(any(Member::class.java))).willAnswer { invocation ->
+            val saved = invocation.arguments[0] as Member
+            Member(id = 3L, phoneNumber = saved.phoneNumber, nickname = saved.nickname)
+        }
+        given(jwtTokenProvider.generateAccessToken(3L, "USER")).willReturn("access-token")
+        given(jwtTokenProvider.generateRefreshToken(3L)).willReturn("refresh-token")
+
+        authService.verifySms(request)
+
+        verify(couponService).issueWelcomeCoupon(3L)
+    }
+
+    @Test
+    fun `SMS 인증 성공 시 기존 회원이면 웰컴 쿠폰을 다시 발급하지 않는다`() {
+        val request = AuthDto.VerifySmsRequest(phoneNumber = "010-1234-5678", code = "1234")
+        given(valueOperations.get("sms:auth:010-1234-5678")).willReturn("1234")
+        given(memberRepository.findByPhoneNumber("010-1234-5678")).willReturn(member(email = null, password = null))
+        given(jwtTokenProvider.generateAccessToken(1L, "USER")).willReturn("access-token")
+        given(jwtTokenProvider.generateRefreshToken(1L)).willReturn("refresh-token")
+
+        authService.verifySms(request)
+
+        verify(memberRepository, never()).save(any(Member::class.java))
+        verify(couponService, never()).issueWelcomeCoupon(anyLong())
     }
 
     @Test

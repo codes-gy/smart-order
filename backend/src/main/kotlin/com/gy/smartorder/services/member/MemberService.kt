@@ -2,10 +2,12 @@ package com.gy.smartorder.services.member
 
 import com.gy.smartorder.common.exception.NotFoundException
 import com.gy.smartorder.dtos.auth.AuthDto
+import com.gy.smartorder.dtos.coupon.CouponDto
 import com.gy.smartorder.dtos.member.MemberDto
 import com.gy.smartorder.entities.member.Member
 import com.gy.smartorder.entities.member.MemberStatus
 import com.gy.smartorder.repositories.member.MemberRepository
+import com.gy.smartorder.services.coupon.CouponService
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -13,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional
 @Transactional(readOnly = true)
 class MemberService(
     private val memberRepository: MemberRepository,
+    private val couponService: CouponService,
 ) {
 
     fun getMe(memberId: Long): MemberDto.MeResponse {
@@ -25,7 +28,12 @@ class MemberService(
 
     fun getRewards(memberId: Long): MemberDto.RewardsSummaryResponse {
         getMember(memberId)
-        return MemberDto.RewardsSummaryResponse(stampCount = 0, stampGoal = 10, availableCouponCount = 0)
+        // stampCount/stampGoal은 Member 적립 도메인 미구현 상태라 0값 placeholder(PROGRESS.md 참고).
+        return MemberDto.RewardsSummaryResponse(
+            stampCount = 0,
+            stampGoal = 10,
+            availableCouponCount = couponService.getAvailableCoupons(memberId).size,
+        )
     }
 
     // 즐겨찾기 도메인 미구현 상태라 항상 빈 배열 반환 (PROGRESS.md 4절 6번 항목).
@@ -34,10 +42,9 @@ class MemberService(
         return emptyList()
     }
 
-    // Coupon 도메인 미구현 상태라 항상 빈 배열 반환 (PROGRESS.md 4절 6번 항목).
-    fun getCoupons(memberId: Long): List<MemberDto.CouponResponse> {
+    fun getCoupons(memberId: Long): List<CouponDto.CouponResponse> {
         getMember(memberId)
-        return emptyList()
+        return couponService.getAvailableCoupons(memberId)
     }
 
     @Transactional
