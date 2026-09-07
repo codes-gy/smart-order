@@ -76,3 +76,11 @@ class MenuOptionGroup(
     @Column(nullable = false)
     var updatedAt: LocalDateTime = LocalDateTime.now(),
 )
+{
+    fun updateInfo(name: String, type: MenuOptionType, required: Boolean, displayOrder: Int) {
+        this.name = name
+        this.type = type
+        this.required = required
+        this.displayOrder = displayOrder
+    }
+}
