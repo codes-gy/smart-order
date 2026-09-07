@@ -8,7 +8,8 @@ import java.time.LocalDateTime
 
 class MemberDto {
 
-    // Coupon/적립 도메인 미구현 상태라 실제 값 대신 0값 placeholder를 내려준다 (PROGRESS.md 4절 5번 항목에서 후속 처리).
+    // stampCount/stampGoal은 Member 적립 도메인 미구현 상태라 0값 placeholder(후속 작업 대상).
+    // availableCouponCount는 CouponService 실제 값을 반영한다.
     data class RewardsSummaryResponse(
         val stampCount: Int,
         val stampGoal: Int,
@@ -26,14 +27,6 @@ class MemberDto {
         val storeId: String,
         val storeName: String,
         val lastOrderedAt: LocalDateTime,
-    )
-
-    // frontend Coupon과 1:1. Coupon 도메인 미구현 상태라 지금은 항상 빈 배열로 내려준다.
-    data class CouponResponse(
-        val id: String,
-        val name: String,
-        val discountAmount: Int,
-        val expiresAt: LocalDateTime,
     )
 
     data class UpdateProfileRequest(
