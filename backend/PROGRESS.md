@@ -46,6 +46,14 @@
   미적립, 다른 상태 전환 시 미적립) — 총 `OrderServiceTest` 11건 + `MemberServiceTest` 4건 전부 통과, 기존
   테스트 회귀 없음.
 
+### 2.2 커밋 + push + PR 생성 — 완료
+- 커밋 2개로 분리: `feat: Member 적립/스탬프 도메인 추가 및 주문 연동`(코드+테스트), `docs: Member
+  적립/스탬프 브랜치 진행 상황 정리`(이 문서). `git push -u origin feature/gy/member-stamp` 성공.
+- 이번엔 `gh` CLI가 설치·인증돼 있어(`codes-gy` 계정) `gh pr create`로 바로 생성.
+- **결과**: PR #7, `feature/gy/member-stamp` → `develop`, https://github.com/codes-gy/smart-order/pull/7
+- **다음 단계**: 리뷰/머지 대기. 머지 후엔 3절 "다음에 할 일" 2번(Notification 도메인)부터 새 브랜치로
+  이어서 진행하면 됨.
+
 ## 3. 다음에 할 일 (우선순위 순, `BACKEND_ROADMAP.md` 기준)
 
 ### [x] 0. Coupon 도메인 — 완료 (PR #6, `develop` 병합됨)
