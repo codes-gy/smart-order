@@ -1,7 +1,9 @@
 package com.gy.smartorder.controllers.store
 
 import com.gy.smartorder.common.exception.NotFoundException
-import com.gy.smartorder.config.SecurityConfig
+import com.gy.smartorder.config.passport.JwtAuthenticationEntryPoint
+import com.gy.smartorder.config.passport.JwtTokenProvider
+import com.gy.smartorder.config.security.SecurityConfig
 import com.gy.smartorder.dtos.store.StoreDto
 import com.gy.smartorder.entities.store.StoreStatus
 import com.gy.smartorder.services.store.StoreService
@@ -11,6 +13,9 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import org.springframework.security.core.authority.SimpleGrantedAuthority
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
@@ -23,17 +28,24 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
  * `GlobalExceptionHandler`는 `@ControllerAdvice`라 `@WebMvcTest`가 자동으로 스캔에 포함하지만,
  * `SecurityConfig`는 평범한 `@Configuration`이라 슬라이스가 스캔하지 않는다 — 명시적으로
  * `@Import`하지 않으면 스프링 시큐리티 기본값(전체 요청 인증 필요)이 적용돼 모든 요청이 401이 된다.
+ * `JwtAuthenticationFilter`는 `@Component`라 슬라이스가 자동 스캔하지만, 그 생성자 의존성인
+ * `JwtTokenProvider`(평범한 `@Component`)는 안 잡혀서 `@MockitoBean`으로 채워준다.
+ * `JwtAuthenticationEntryPoint`도 슬라이스 화이트리스트 타입이 아니라 `@Import`가 필요하다
+ * (AuthControllerTest와 동일한 패턴, PROGRESS.md 2.10절 참고).
  * 여기서 확인하는 JSON 필드명·구조(`result`/`meta`, `location.lat/lng`,
  * `estimatedPrepMinutes`, `isOpen` 등)는 프론트 `StoreSummary`/`StoreDetail`/`CursorResponse`
  * 타입(`src/types/store.types.ts`, `src/types/common.types.ts`)과 1:1로 맞춘 것이다.
  */
 @WebMvcTest(StoreController::class)
-@Import(SecurityConfig::class)
+@Import(SecurityConfig::class, JwtAuthenticationEntryPoint::class)
 class StoreControllerTest(
     @Autowired private val mockMvc: MockMvc,
 ) {
     @MockitoBean
     private lateinit var storeService: StoreService
+
+    @MockitoBean
+    private lateinit var jwtTokenProvider: JwtTokenProvider
 
     private fun sampleDetail(isOpen: Boolean = true) = StoreDto.StoreDetailResponse(
         id = "1",
@@ -48,6 +60,10 @@ class StoreControllerTest(
         phoneNumber = "02-1234-5678",
         description = "스페셜티 원두 카페",
     )
+
+    /** `JwtAuthenticationFilter`가 정상 토큰 검증 시 심어주는 인증 정보와 동일한 모양(Long subject + ROLE_STORE_ADMIN)을 흉내낸다. */
+    private fun storeAdminAuth(storeId: Long) =
+        authentication(UsernamePasswordAuthenticationToken(storeId, null, listOf(SimpleGrantedAuthority("ROLE_STORE_ADMIN"))))
 
     @Test
     fun `매장 상세 조회는 프론트 StoreDetail 계약과 동일한 필드를 반환한다`() {
@@ -133,7 +149,7 @@ class StoreControllerTest(
     @Test
     fun `매장 영업상태를 PAUSED로 변경하면 200을 반환한다`() {
         val now = java.time.LocalDateTime.of(2026, 1, 1, 0, 0)
-        given(storeService.updateStoreStatus(1L, StoreDto.StatusUpdateRequest(StoreStatus.PAUSED))).willReturn(
+        given(storeService.updateStoreStatus(1L, 1L, StoreDto.StatusUpdateRequest(StoreStatus.PAUSED))).willReturn(
             StoreDto.StoreResponse(
                 id = 1L, name = "역삼역점", address = "서울시", addressDetail = null,
                 phone = "02-0000-0000", status = StoreStatus.PAUSED, businessNumber = "123-45-67890",
@@ -146,6 +162,7 @@ class StoreControllerTest(
 
         mockMvc.perform(
             patch("/stores/1/status")
+                .with(storeAdminAuth(1L))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""{"status":"PAUSED"}"""),
         )
@@ -157,6 +174,7 @@ class StoreControllerTest(
     fun `PREPARING은 더 이상 유효한 매장 상태가 아니므로 400을 반환한다`() {
         mockMvc.perform(
             patch("/stores/1/status")
+                .with(storeAdminAuth(1L))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""{"status":"PREPARING"}"""),
         ).andExpect(status().isBadRequest)
@@ -166,6 +184,7 @@ class StoreControllerTest(
     fun `status 없이 요청하면 400을 반환한다`() {
         mockMvc.perform(
             patch("/stores/1/status")
+                .with(storeAdminAuth(1L))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""{}"""),
         ).andExpect(status().isBadRequest)
@@ -174,11 +193,12 @@ class StoreControllerTest(
 
     @Test
     fun `존재하지 않는 매장의 상태를 변경하면 404를 반환한다`() {
-        given(storeService.updateStoreStatus(999L, StoreDto.StatusUpdateRequest(StoreStatus.PAUSED)))
+        given(storeService.updateStoreStatus(999L, 999L, StoreDto.StatusUpdateRequest(StoreStatus.PAUSED)))
             .willThrow(NotFoundException("STORE_NOT_FOUND", "해당 매장을 찾을 수 없어요."))
 
         mockMvc.perform(
             patch("/stores/999/status")
+                .with(storeAdminAuth(999L))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""{"status":"PAUSED"}"""),
         ).andExpect(status().isNotFound)
