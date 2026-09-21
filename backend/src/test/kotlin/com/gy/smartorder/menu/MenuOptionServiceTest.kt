@@ -1,6 +1,7 @@
 package com.gy.smartorder.menu
 
 import com.gy.smartorder.common.exception.BadRequestException
+import com.gy.smartorder.common.exception.ForbiddenException
 import com.gy.smartorder.common.exception.NotFoundException
 import com.gy.smartorder.category.Category
 import com.gy.smartorder.store.Store
@@ -68,6 +69,12 @@ class MenuOptionServiceTest {
         priceDelta = 0,
     )
 
+    /** 픽스처의 매장(`store().id`)과 동일한 STORE_ADMIN 토큰 subject. */
+    private val ownerStoreId = 1L
+
+    /** 다른 매장 계정으로 로그인한 STORE_ADMIN 토큰 subject. */
+    private val otherStoreId = 999L
+
     @Test
     fun `옵션 그룹을 생성한다`() {
         val menu = menu()
@@ -76,7 +83,7 @@ class MenuOptionServiceTest {
         given(menuOptionGroupRepository.save(any(MenuOptionGroup::class.java))).willAnswer { it.arguments[0] }
 
         val req = MenuDto.MenuOptionGroupCreateRequest(name = "온도", type = "single", required = true)
-        val res = menuOptionService.createOptionGroup(1L, req)
+        val res = menuOptionService.createOptionGroup(ownerStoreId, 1L, req)
 
         assertThat(res.name).isEqualTo("온도")
         assertThat(res.type).isEqualTo("single")
@@ -84,11 +91,21 @@ class MenuOptionServiceTest {
     }
 
     @Test
+    fun `다른 매장 계정으로 옵션 그룹을 생성하면 ForbiddenException을 던진다`() {
+        given(menuRepository.findById(1L)).willReturn(Optional.of(menu()))
+
+        assertThatThrownBy {
+            menuOptionService.createOptionGroup(otherStoreId, 1L, MenuDto.MenuOptionGroupCreateRequest(name = "온도", type = "single"))
+        }.isInstanceOf(ForbiddenException::class.java)
+        verify(menuOptionGroupRepository, never()).save(any(MenuOptionGroup::class.java))
+    }
+
+    @Test
     fun `존재하지 않는 메뉴에 옵션 그룹을 생성하면 NotFoundException을 던진다`() {
         given(menuRepository.findById(1L)).willReturn(Optional.empty())
 
         assertThatThrownBy {
-            menuOptionService.createOptionGroup(1L, MenuDto.MenuOptionGroupCreateRequest(name = "온도", type = "single"))
+            menuOptionService.createOptionGroup(ownerStoreId, 1L, MenuDto.MenuOptionGroupCreateRequest(name = "온도", type = "single"))
         }.isInstanceOf(NotFoundException::class.java)
     }
 
@@ -98,7 +115,7 @@ class MenuOptionServiceTest {
         given(menuOptionGroupRepository.existsByMenuIdAndName(1L, "온도")).willReturn(true)
 
         assertThatThrownBy {
-            menuOptionService.createOptionGroup(1L, MenuDto.MenuOptionGroupCreateRequest(name = "온도", type = "single"))
+            menuOptionService.createOptionGroup(ownerStoreId, 1L, MenuDto.MenuOptionGroupCreateRequest(name = "온도", type = "single"))
         }.isInstanceOf(IllegalArgumentException::class.java)
         verify(menuOptionGroupRepository, never()).save(any(MenuOptionGroup::class.java))
     }
@@ -109,7 +126,7 @@ class MenuOptionServiceTest {
         given(menuOptionGroupRepository.existsByMenuIdAndName(1L, "온도")).willReturn(false)
 
         assertThatThrownBy {
-            menuOptionService.createOptionGroup(1L, MenuDto.MenuOptionGroupCreateRequest(name = "온도", type = "invalid"))
+            menuOptionService.createOptionGroup(ownerStoreId, 1L, MenuDto.MenuOptionGroupCreateRequest(name = "온도", type = "invalid"))
         }.isInstanceOf(BadRequestException::class.java)
     }
 
@@ -119,7 +136,7 @@ class MenuOptionServiceTest {
         given(menuOptionGroupRepository.findById(10L)).willReturn(Optional.of(group))
 
         val req = MenuDto.MenuOptionGroupUpdateRequest(name = "온도 변경", type = "multiple", required = false, displayOrder = 2)
-        val res = menuOptionService.updateOptionGroup(10L, req)
+        val res = menuOptionService.updateOptionGroup(ownerStoreId, 10L, req)
 
         assertThat(res.name).isEqualTo("온도 변경")
         assertThat(res.type).isEqualTo("multiple")
@@ -127,11 +144,20 @@ class MenuOptionServiceTest {
     }
 
     @Test
+    fun `다른 매장 계정으로 옵션 그룹을 수정하면 ForbiddenException을 던진다`() {
+        given(menuOptionGroupRepository.findById(10L)).willReturn(Optional.of(optionGroup()))
+
+        assertThatThrownBy {
+            menuOptionService.updateOptionGroup(otherStoreId, 10L, MenuDto.MenuOptionGroupUpdateRequest(name = "x", type = "single"))
+        }.isInstanceOf(ForbiddenException::class.java)
+    }
+
+    @Test
     fun `존재하지 않는 옵션 그룹을 수정하면 NotFoundException을 던진다`() {
         given(menuOptionGroupRepository.findById(10L)).willReturn(Optional.empty())
 
         assertThatThrownBy {
-            menuOptionService.updateOptionGroup(10L, MenuDto.MenuOptionGroupUpdateRequest(name = "x", type = "single"))
+            menuOptionService.updateOptionGroup(ownerStoreId, 10L, MenuDto.MenuOptionGroupUpdateRequest(name = "x", type = "single"))
         }.isInstanceOf(NotFoundException::class.java)
     }
 
@@ -140,7 +166,7 @@ class MenuOptionServiceTest {
         val group = optionGroup()
         given(menuOptionGroupRepository.findById(10L)).willReturn(Optional.of(group))
 
-        menuOptionService.deleteOptionGroup(10L)
+        menuOptionService.deleteOptionGroup(ownerStoreId, 10L)
 
         verify(menuOptionGroupRepository).delete(group)
     }
@@ -153,10 +179,20 @@ class MenuOptionServiceTest {
         given(menuOptionChoiceRepository.save(any(MenuOptionChoice::class.java))).willAnswer { it.arguments[0] }
 
         val req = MenuDto.MenuOptionChoiceCreateRequest(label = "아이스", priceDelta = 0)
-        val res = menuOptionService.createOptionChoice(10L, req)
+        val res = menuOptionService.createOptionChoice(ownerStoreId, 10L, req)
 
         assertThat(res.label).isEqualTo("아이스")
         assertThat(res.isSoldOut).isFalse()
+    }
+
+    @Test
+    fun `다른 매장 계정으로 옵션 선택지를 생성하면 ForbiddenException을 던진다`() {
+        given(menuOptionGroupRepository.findById(10L)).willReturn(Optional.of(optionGroup()))
+
+        assertThatThrownBy {
+            menuOptionService.createOptionChoice(otherStoreId, 10L, MenuDto.MenuOptionChoiceCreateRequest(label = "아이스"))
+        }.isInstanceOf(ForbiddenException::class.java)
+        verify(menuOptionChoiceRepository, never()).save(any(MenuOptionChoice::class.java))
     }
 
     @Test
@@ -165,7 +201,7 @@ class MenuOptionServiceTest {
         given(menuOptionChoiceRepository.existsByOptionGroupIdAndLabel(10L, "아이스")).willReturn(true)
 
         assertThatThrownBy {
-            menuOptionService.createOptionChoice(10L, MenuDto.MenuOptionChoiceCreateRequest(label = "아이스"))
+            menuOptionService.createOptionChoice(ownerStoreId, 10L, MenuDto.MenuOptionChoiceCreateRequest(label = "아이스"))
         }.isInstanceOf(IllegalArgumentException::class.java)
         verify(menuOptionChoiceRepository, never()).save(any(MenuOptionChoice::class.java))
     }
@@ -176,7 +212,7 @@ class MenuOptionServiceTest {
         given(menuOptionChoiceRepository.findById(100L)).willReturn(Optional.of(choice))
 
         val req = MenuDto.MenuOptionChoiceUpdateRequest(label = "핫", priceDelta = 500, displayOrder = 1)
-        val res = menuOptionService.updateOptionChoice(100L, req)
+        val res = menuOptionService.updateOptionChoice(ownerStoreId, 100L, req)
 
         assertThat(res.label).isEqualTo("핫")
         assertThat(res.priceDelta).isEqualTo(500)
@@ -187,7 +223,11 @@ class MenuOptionServiceTest {
         val choice = optionChoice(optionGroup())
         given(menuOptionChoiceRepository.findById(100L)).willReturn(Optional.of(choice))
 
-        val res = menuOptionService.updateOptionChoiceSoldOut(100L, MenuDto.MenuOptionChoiceSoldOutUpdateRequest(isSoldOut = true))
+        val res = menuOptionService.updateOptionChoiceSoldOut(
+            ownerStoreId,
+            100L,
+            MenuDto.MenuOptionChoiceSoldOutUpdateRequest(isSoldOut = true),
+        )
 
         assertThat(res.isSoldOut).isTrue()
     }
@@ -197,8 +237,19 @@ class MenuOptionServiceTest {
         val choice = optionChoice(optionGroup())
         given(menuOptionChoiceRepository.findById(100L)).willReturn(Optional.of(choice))
 
-        menuOptionService.deleteOptionChoice(100L)
+        menuOptionService.deleteOptionChoice(ownerStoreId, 100L)
 
         verify(menuOptionChoiceRepository).delete(choice)
+    }
+
+    @Test
+    fun `다른 매장 계정으로 옵션 선택지를 삭제하면 ForbiddenException을 던진다`() {
+        val choice = optionChoice(optionGroup())
+        given(menuOptionChoiceRepository.findById(100L)).willReturn(Optional.of(choice))
+
+        assertThatThrownBy {
+            menuOptionService.deleteOptionChoice(otherStoreId, 100L)
+        }.isInstanceOf(ForbiddenException::class.java)
+        verify(menuOptionChoiceRepository, never()).delete(any(MenuOptionChoice::class.java))
     }
 }
