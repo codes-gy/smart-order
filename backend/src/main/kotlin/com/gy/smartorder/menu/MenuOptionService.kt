@@ -1,6 +1,7 @@
 package com.gy.smartorder.menu
 
 import com.gy.smartorder.common.exception.BadRequestException
+import com.gy.smartorder.common.exception.ForbiddenException
 import com.gy.smartorder.common.exception.NotFoundException
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
@@ -15,8 +16,9 @@ class MenuOptionService(
     private val menuOptionChoiceRepository: MenuOptionChoiceRepository,
 ) {
     @Transactional
-    fun createOptionGroup(menuId: Long, req: MenuDto.MenuOptionGroupCreateRequest): MenuDto.MenuOptionGroupResponse {
+    fun createOptionGroup(authenticatedStoreId: Long, menuId: Long, req: MenuDto.MenuOptionGroupCreateRequest): MenuDto.MenuOptionGroupResponse {
         val menu = findMenuOrThrow(menuId)
+        requireOwnStore(authenticatedStoreId, menu.category.store.id)
         val type = parseOptionType(req.type)
 
         if (menuOptionGroupRepository.existsByMenuIdAndName(menuId, req.name)) {
@@ -35,8 +37,9 @@ class MenuOptionService(
     }
 
     @Transactional
-    fun updateOptionGroup(groupId: Long, req: MenuDto.MenuOptionGroupUpdateRequest): MenuDto.MenuOptionGroupResponse {
+    fun updateOptionGroup(authenticatedStoreId: Long, groupId: Long, req: MenuDto.MenuOptionGroupUpdateRequest): MenuDto.MenuOptionGroupResponse {
         val group = findOptionGroupOrThrow(groupId)
+        requireOwnStore(authenticatedStoreId, group.menu.category.store.id)
         group.updateInfo(
             name = req.name,
             type = parseOptionType(req.type),
@@ -47,14 +50,16 @@ class MenuOptionService(
     }
 
     @Transactional
-    fun deleteOptionGroup(groupId: Long) {
+    fun deleteOptionGroup(authenticatedStoreId: Long, groupId: Long) {
         val group = findOptionGroupOrThrow(groupId)
+        requireOwnStore(authenticatedStoreId, group.menu.category.store.id)
         menuOptionGroupRepository.delete(group)
     }
 
     @Transactional
-    fun createOptionChoice(groupId: Long, req: MenuDto.MenuOptionChoiceCreateRequest): MenuDto.MenuOptionChoiceResponse {
+    fun createOptionChoice(authenticatedStoreId: Long, groupId: Long, req: MenuDto.MenuOptionChoiceCreateRequest): MenuDto.MenuOptionChoiceResponse {
         val group = findOptionGroupOrThrow(groupId)
+        requireOwnStore(authenticatedStoreId, group.menu.category.store.id)
 
         if (menuOptionChoiceRepository.existsByOptionGroupIdAndLabel(groupId, req.label)) {
             throw IllegalArgumentException("해당 옵션 그룹에 이미 동일한 선택지명이 존재합니다.")
@@ -71,8 +76,9 @@ class MenuOptionService(
     }
 
     @Transactional
-    fun updateOptionChoice(choiceId: Long, req: MenuDto.MenuOptionChoiceUpdateRequest): MenuDto.MenuOptionChoiceResponse {
+    fun updateOptionChoice(authenticatedStoreId: Long, choiceId: Long, req: MenuDto.MenuOptionChoiceUpdateRequest): MenuDto.MenuOptionChoiceResponse {
         val choice = findOptionChoiceOrThrow(choiceId)
+        requireOwnStore(authenticatedStoreId, choice.optionGroup!!.menu.category.store.id)
         choice.updateInfo(
             label = req.label,
             priceDelta = req.priceDelta,
@@ -83,17 +89,20 @@ class MenuOptionService(
 
     @Transactional
     fun updateOptionChoiceSoldOut(
+        authenticatedStoreId: Long,
         choiceId: Long,
         req: MenuDto.MenuOptionChoiceSoldOutUpdateRequest,
     ): MenuDto.MenuOptionChoiceResponse {
         val choice = findOptionChoiceOrThrow(choiceId)
+        requireOwnStore(authenticatedStoreId, choice.optionGroup!!.menu.category.store.id)
         choice.updateSoldOut(req.isSoldOut!!)
         return MenuDto.MenuOptionChoiceResponse.from(choice)
     }
 
     @Transactional
-    fun deleteOptionChoice(choiceId: Long) {
+    fun deleteOptionChoice(authenticatedStoreId: Long, choiceId: Long) {
         val choice = findOptionChoiceOrThrow(choiceId)
+        requireOwnStore(authenticatedStoreId, choice.optionGroup!!.menu.category.store.id)
         menuOptionChoiceRepository.delete(choice)
     }
 
@@ -114,4 +123,12 @@ class MenuOptionService(
     private fun findOptionChoiceOrThrow(choiceId: Long): MenuOptionChoice =
         menuOptionChoiceRepository.findByIdOrNull(choiceId)
             ?: throw NotFoundException("OPTION_CHOICE_NOT_FOUND", "해당 옵션 선택지를 찾을 수 없습니다. id=$choiceId")
+
+    // STORE_ADMIN 토큰의 subject(storeId)가 대상 매장과 일치하는지 확인 — 다른 매장 계정으로 로그인한
+    // 관리자가 남의 매장 메뉴 옵션을 고치지 못하도록 막는다(SecurityConfig의 hasRole만으로는 못 막는 부분).
+    private fun requireOwnStore(authenticatedStoreId: Long, storeId: Long) {
+        if (authenticatedStoreId != storeId) {
+            throw ForbiddenException("STORE_ACCESS_DENIED", "해당 매장에 대한 권한이 없습니다.")
+        }
+    }
 }
