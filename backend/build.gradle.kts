@@ -46,6 +46,10 @@ dependencies {
     runtimeOnly("com.h2database:h2")
     runtimeOnly("org.postgresql:postgresql")
 
+    //DB Migration (prod 전용, local/test는 H2 ddl-auto 사용)
+    implementation("org.flywaydb:flyway-core")
+    implementation("org.flywaydb:flyway-database-postgresql")
+
     //Actuator
     implementation("org.springframework.boot:spring-boot-starter-actuator")
 
