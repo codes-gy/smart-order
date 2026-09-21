@@ -5,6 +5,7 @@ import com.gy.smartorder.menu.MenuService
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
@@ -24,9 +25,10 @@ class MenuController(
 
     @PostMapping
     fun createMenu(
+        @AuthenticationPrincipal authenticatedStoreId: Long,
         @Valid @RequestBody req: MenuDto.MenuCreateRequest,
     ): ResponseEntity<MenuDto.MenuResponse> {
-        val res = menuService.createMenu(req)
+        val res = menuService.createMenu(authenticatedStoreId, req)
         return ResponseEntity.status(HttpStatus.CREATED).body(res)
     }
 
@@ -48,27 +50,30 @@ class MenuController(
 
     @PutMapping("/{menuId}")
     fun updateMenu(
+        @AuthenticationPrincipal authenticatedStoreId: Long,
         @PathVariable menuId: Long,
         @Valid @RequestBody req: MenuDto.MenuUpdateRequest,
     ): ResponseEntity<MenuDto.MenuResponse> {
-        val res = menuService.updateMenu(menuId, req)
+        val res = menuService.updateMenu(authenticatedStoreId, menuId, req)
         return ResponseEntity.ok(res)
     }
 
     @PatchMapping("/{menuId}/status")
     fun updateMenuStatus(
+        @AuthenticationPrincipal authenticatedStoreId: Long,
         @PathVariable menuId: Long,
         @Valid @RequestBody req: MenuDto.MenuStatusUpdateRequest,
     ): ResponseEntity<MenuDto.MenuResponse> {
-        val res = menuService.updateMenuStatus(menuId, req)
+        val res = menuService.updateMenuStatus(authenticatedStoreId, menuId, req)
         return ResponseEntity.ok(res)
     }
 
     @DeleteMapping("/{menuId}")
     fun deleteMenu(
+        @AuthenticationPrincipal authenticatedStoreId: Long,
         @PathVariable menuId: Long,
     ): ResponseEntity<Void> {
-        menuService.deleteMenu(menuId)
+        menuService.deleteMenu(authenticatedStoreId, menuId)
         return ResponseEntity.noContent().build()
     }
 }
