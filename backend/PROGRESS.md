@@ -1,21 +1,21 @@
 # 스마트오더 백엔드 진행 상황 (로컬 세션용)
 
-> 최종 갱신: 2026-09-07 (1.7절 — 패키지 구조를 Package by Layer → Package by Feature로 전환)
-> 기준 브랜치: `feature/gy/package-by-feature` (base: `develop`, merge-base에 PR #5~#11이 이미 병합돼 있음)
-> 이 문서는 로컬 Claude Code CLI 세션이 관리합니다. `BACKEND_ROADMAP.md`는 Cowork 세션이 별도로 관리하는
-> 문서이니 혼동하지 말 것. 이전 브랜치들의 작업 기록은 각각 PR #5~#8로 병합 완료돼 이 문서에서는 정리했다
-> — 상세 이력은 `git log`/PR 참고. PR 본문은 앞으로 `.github/PULL_REQUEST_TEMPLATE.md` 형식(작업
-> 유형/작업 내용/고민한 내용/체크리스트/테스트/참고 사항)을 따른다.
+> 최종 갱신: 2026-09-21 (문서 동기화 + 중복 브랜치/파일 정리, `feature/gy/docs-sync` 브랜치)
+> 기준 브랜치: `feature/gy/docs-sync` (base: `develop`, merge-base에 PR #5~#13이 이미 병합돼 있음)
+> 이 문서는 로컬 Claude Code CLI 세션이 관리합니다. 이전 브랜치들의 작업 기록은 각각 PR로 병합 완료돼 이
+> 문서에서는 정리했다 — 상세 이력은 `git log`/PR 참고. PR 본문은 `.github/PULL_REQUEST_TEMPLATE.md` 형식
+> (작업 유형/작업 내용/고민한 내용/체크리스트/테스트/참고 사항)을 따른다.
 >
-> **⚠️ 확인된 중복 작업 (미해결)**: `origin/feature/gy/member-reward`에 다른 세션(추정: Cowork)이 이미
-> 병합된 PR #7과 거의 동일한 내용(Member 적립/스탬프)을 독립적으로 구현해 push해둔 상태. PR은 아직 안
-> 열렸음. develop에 이미 PR #7이 병합됐으니 그 브랜치는 더 이상 필요 없음 — 확인 후 삭제 권장(`git push
-> origin --delete feature/gy/member-reward`), 단 다른 세션이 아직 쓰고 있을 수 있으니 삭제 전 확인 필요.
+> **✅ 해결됨 — 중복 작업 브랜치**: 위에서 경고하던 `feature/gy/member-reward`는 실제로 PR #13으로
+> 병합됐지만(병합 시점 head가 로컬 커밋과 달라, 병합 과정에서 별도 정리가 있었던 것으로 추정), 그 브랜치의
+> 커밋들은 이미 다른 PR(#7 Member 적립/스탬프, #8 Notification, #9 Event, #10 Cart, #11 메뉴 옵션 관리자
+> CRUD)로 병합된 내용과 완전히 중복이었음을 확인. 그 브랜치에서 유일하게 새로웠던 작업(Flyway 마이그레이션)
+> 은 `origin/develop` 기준 새 브랜치 `feature/gy/db-migration`(PR #14)으로 재적용해 분리했다. `feature/gy/
+> member-reward` 로컬/원격 브랜치는 이제 완전히 불필요 — 삭제해도 안전하다(삭제는 파괴적 작업이라 이
+> 문서에서 실행하지는 않음, 필요 시 `git push origin --delete feature/gy/member-reward`).
 >
-> **⚠️ 오래된 중복 문서 발견 (미해결)**: `backend/BACKEND_ROADMAP.md`가 저장소 루트 `BACKEND_ROADMAP.md`와
-> 별개로 git에 추적돼 있음. Auth 도메인이 아직 미구현이던 시절 스냅샷이라 지금은 완전히 stale — 루트
-> 문서가 진짜 최신본. 정리(삭제) 필요하지만 이 문서는 Cowork 세션이 관리하는 영역이라 확인 없이 건드리지
-> 않았음.
+> **✅ 해결됨 — 오래된 중복 문서**: `backend/BACKEND_ROADMAP.md`는 이 브랜치에서 삭제했다. 저장소 루트
+> `BACKEND_ROADMAP.md`가 유일한 로드맵 문서다.
 
 ## 1. 현재 구현 상태 요약
 
@@ -28,6 +28,7 @@
 | Event | ⏸ 보류 (PR #9) | PRD 근거 없어 설계 불가 — 3절 참고 |
 | Cart | ➖ 백엔드 작업 불필요로 확인 (PR #10) | 프론트가 Zustand `persist`(localStorage)로 클라이언트에만 보관, 서버 동기화 없음 |
 | 메뉴 옵션 관리자 CRUD | ✅ `develop` 기준 구현됨 (PR #11) | 옵션 그룹/선택지 생성·수정·삭제·품절처리. 조회는 기존 `GET /menus/{id}`가 담당 |
+| DB 마이그레이션(Flyway) | 🔶 PR #14 리뷰 대기 | prod 전용 baseline(`V1__init.sql`). `feature/gy/db-migration` 브랜치, 이 브랜치와 별개로 진행 |
 
 ## 2. 지금까지 한 일 (이 브랜치)
 
@@ -88,6 +89,22 @@
   그룹 생성/중복명/메뉴없음/잘못된타입, 그룹 수정/없음, 그룹 삭제, 선택지 생성/중복명, 선택지 수정,
   선택지 품절처리, 선택지 삭제) 전부 통과, 기존 테스트 회귀 없음.
 
+### 2.3 문서 동기화 + 중복 브랜치/파일 정리 (이 브랜치)
+- **배경**: "프로젝트에서 미흡한 사항"을 점검하다 루트 `CLAUDE.md`/`BACKEND_ROADMAP.md`가 2026-08-21
+  시점에서 멈춰 있어 실제 코드(Auth 구현 완료, Spring Boot 4.1.0, flat 패키지 구조 등)와 어긋나 있는
+  것을 발견. 조사 과정에서 `feature/gy/member-reward` 브랜치가 `origin/develop`과 구조적으로 발산해
+  있고, 그 브랜치의 미병합 작업 대부분이 이미 다른 PR로 병합된 내용과 중복임을 확인(위 배너 참고).
+- 루트 `CLAUDE.md`: "Spring Boot 3.x" → 4.1.0 정정, Redis/Kafka 의존성(미사용 상태) 한 줄 추가, "Auth"
+  절을 실제 `SecurityConfig.kt`(JWT 필터, `STORE_ADMIN`/`ADMIN` 인가, `/auth/**` 등만 `permitAll`)에
+  맞게 재작성.
+- 루트 `BACKEND_ROADMAP.md`: 상태 표/다음 할 일/리스크를 현재 `develop` 기준 사실로 전면 갱신(Auth/
+  Coupon/Member/메뉴옵션관리자CRUD ✅, Cart/Notification ➖ 불필요 확정, Event ⏸ 보류, CI ❌ 아직 없음).
+- `backend/BACKEND_ROADMAP.md` 삭제(루트 파일과 중복, 위 배너 참고).
+- `backend/CLAUDE.md`의 "[작업 규칙] 1. 문서 읽기" 항목이 "프로젝트 루트의 PROGRESS.md"를 가리키고
+  있었는데 실제 경로는 `backend/PROGRESS.md`라 정정.
+- **검증**: 코드 변경이 없는 순수 문서 작업이라 `./gradlew test`는 별도로 재실행하지 않음(Step 1의
+  Flyway PR #14에서 이미 95개 테스트 통과 확인).
+
 ## 3. 다음에 할 일 (우선순위 순, `BACKEND_ROADMAP.md` 기준)
 
 ### [x] 0. Coupon 도메인 — 완료 (PR #6, `develop` 병합됨)
@@ -101,18 +118,23 @@
 ### [x] (번외) Package by Layer → Package by Feature 전환 — 완료, 2026-09-07 (이 브랜치)
 - 2.1절 참고. 로드맵 우선순위 목록에는 없던 사용자 직접 요청 작업.
 
-### [ ] 6. 인프라/운영
-- 마이그레이션 도구(Flyway/Liquibase) 도입 — prod 프로필(`ddl-auto: validate`)용 스키마 스크립트 없음.
-  이번에 `coupons` 테이블도 추가돼 관리 대상 테이블이 더 늘어남.
-- CI에서 `./gradlew build` 자동 검증.
+### [🔶] 6. DB 마이그레이션 도구(Flyway) 도입 — PR #14 리뷰 대기
+- `feature/gy/db-migration` 브랜치(이 브랜치와 별개)에서 진행. 상세는 그 브랜치의 `PROGRESS.md` 2.3/2.4절
+  참고.
+
+### [x] (번외) 문서 동기화 + 중복 브랜치/파일 정리 — 완료, 2026-09-21 (이 브랜치)
+- 2.3절 참고.
+
+### [ ] 7. CI에서 `./gradlew build` 자동 검증
+- 아직 착수 전. GitHub Actions 워크플로 신설 필요(별도 브랜치에서 진행 예정).
 
 ## 4. 리스크 / 확인 필요 항목
 - **쿠폰 발급 경로가 웰컴 쿠폰뿐**: 관리자가 프로모션 쿠폰을 임의로 발급하는 기능은 아직 없음. 필요해지면
   별도 우선순위로(관리자 발급 API 신설 또는 `POST /stores/{storeId}/coupons` 등).
 - **(해결됨, PR #6)** ~~Order 동시 요청 경쟁 상태로 쿠폰 이중 소비 방지가 불완전~~ — `ConflictException` 캐치 후
   재조회하는 방식으로 수정 완료.
-- **DB 마이그레이션 도구 부재**: `coupons`, `member.stamp_count` 컬럼 포함, prod 스키마 스크립트가 여전히
-  없음(3절 6번 참고).
+- **(PR #14 리뷰 대기)** ~~DB 마이그레이션 도구 부재~~ — `feature/gy/db-migration` 브랜치에서 Flyway 도입
+  완료, `develop` 병합 대기 중(3절 6번 참고). 병합 후에도 실제 Postgres 적용 검증은 아직 남아 있음.
 - **스탬프 적립 시점은 PRD에 명시되지 않아 판단으로 결정함**: "주문이 `PICKED_UP`(픽업 완료) 상태로 전환될
   때 1개 적립"으로 구현(생성 시점이 아니라 완료 시점 — 취소된 주문에는 적립 안 됨). PRD/기획 의도와 다르면
   `OrderService.updateOrderStatus()`의 `justPickedUp` 조건만 바꾸면 됨.

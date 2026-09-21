@@ -8,7 +8,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 preparation/pickup status in real time. This is a monorepo with two independently-run apps that share
 no build tooling but must stay in contract sync:
 
-- `backend/` — Kotlin + Spring Boot 3.x REST API (Gradle, single module, `rootProject.name = "smart-order"`).
+- `backend/` — Kotlin + Spring Boot 4.1.0 REST API (Gradle, single module, `rootProject.name = "smart-order"`).
+  `spring-boot-starter-data-redis` and `spring-boot-starter-kafka` are on the classpath but not yet wired
+  into any domain logic — treat them as available infra, not as something currently in active use.
 - `frontend/` — Next.js (App Router) + TypeScript client (`npm`).
 
 The backend is the newer, actively-developed side; the frontend's mock layer (`frontend/src/api/mock`,
@@ -120,6 +122,12 @@ frontend types most IDs as `string`, while the backend still binds `storeId`/`me
 `Long` in request bodies.
 
 ### Auth
-`SecurityConfig` currently `permitAll`s every request (`spring-boot-starter-security` is on the classpath
-only to avoid the default random-password HTTP Basic prompt). There is no authentication/authorization yet
-— every endpoint, including store-admin and payment-confirm endpoints, is publicly callable.
+`SecurityConfig` runs a stateless JWT filter chain (`JwtAuthenticationFilter` ahead of
+`UsernamePasswordAuthenticationFilter`, no sessions). Only a short allowlist is `permitAll`
+(`/auth/**`, Swagger/docs, `/h2-console/**`, `/actuator/**`) plus `GET /stores/**` (customers can browse
+stores before logging in); `/admin/**` requires `ADMIN`, `PATCH /stores/**` requires `STORE_ADMIN`
+(issued by `POST /auth/store-login`), and everything else falls through to `anyRequest, authenticated`
+(logged-in member, no role check) — that includes the menu/menu-option admin write endpoints, which don't
+yet have their own `STORE_ADMIN` restriction (see `backend/PROGRESS.md`). Social login (Kakao/Apple, with
+server-side token verification), SMS auth, store-admin login, and refresh-token issuance/invalidation are
+all implemented under `auth/`.
