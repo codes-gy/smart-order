@@ -1,5 +1,6 @@
 package com.gy.smartorder.category
 
+import com.gy.smartorder.common.exception.ForbiddenException
 import com.gy.smartorder.common.exception.NotFoundException
 import com.gy.smartorder.category.CategoryDto
 import com.gy.smartorder.category.Category
@@ -16,7 +17,8 @@ class CategoryService (
     private val storeRepository: StoreRepository,
 ){
     @Transactional
-    fun createCategory(storeId: Long, req: CategoryDto.CategoryCreateRequest): CategoryDto.CategoryResponse {
+    fun createCategory(authenticatedStoreId: Long, storeId: Long, req: CategoryDto.CategoryCreateRequest): CategoryDto.CategoryResponse {
+        requireOwnStore(authenticatedStoreId, storeId)
         val store = storeRepository.findByIdOrNull(storeId)
             ?: throw NotFoundException("STORE_NOT_FOUND", "해당 매장을 찾을 수 없습니다. id=$storeId")
 
@@ -39,8 +41,9 @@ class CategoryService (
     }
 
     @Transactional
-    fun updateCategory(categoryId: Long, req: CategoryDto.CategoryUpdateRequest): CategoryDto.CategoryResponse {
+    fun updateCategory(authenticatedStoreId: Long, categoryId: Long, req: CategoryDto.CategoryUpdateRequest): CategoryDto.CategoryResponse {
         val category = findCategoryOrThrow(categoryId)
+        requireOwnStore(authenticatedStoreId, category.store.id)
         category.updateInfo(
             name = req.name,
             order = req.order,
@@ -49,12 +52,21 @@ class CategoryService (
     }
 
     @Transactional
-    fun deleteCategory(categoryId: Long) {
+    fun deleteCategory(authenticatedStoreId: Long, categoryId: Long) {
         val category = findCategoryOrThrow(categoryId)
+        requireOwnStore(authenticatedStoreId, category.store.id)
         categoryRepository.delete(category)
     }
 
     private fun findCategoryOrThrow(categoryId: Long): Category =
         categoryRepository.findByIdOrNull(categoryId)
             ?: throw NotFoundException("CATEGORY_NOT_FOUND", "해당 카테고리를 찾을 수 없습니다. id=$categoryId")
+
+    // STORE_ADMIN 토큰의 subject(storeId)가 대상 매장과 일치하는지 확인 — 다른 매장 계정으로 로그인한
+    // 관리자가 남의 매장 카테고리를 고치지 못하도록 막는다(SecurityConfig의 hasRole만으로는 못 막는 부분).
+    private fun requireOwnStore(authenticatedStoreId: Long, storeId: Long) {
+        if (authenticatedStoreId != storeId) {
+            throw ForbiddenException("STORE_ACCESS_DENIED", "해당 매장에 대한 권한이 없습니다.")
+        }
+    }
 }
