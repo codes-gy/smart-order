@@ -1,7 +1,7 @@
 # 스마트오더 백엔드 진행 상황 (로컬 세션용)
 
-> 최종 갱신: 2026-09-07 (1.7절 — 패키지 구조를 Package by Layer → Package by Feature로 전환)
-> 기준 브랜치: `feature/gy/package-by-feature` (base: `develop`, merge-base에 PR #5~#11이 이미 병합돼 있음)
+> 최종 갱신: 2026-09-21 (2.3절 — Flyway 기반 DB 마이그레이션 도입, `feature/gy/db-migration` 브랜치)
+> 기준 브랜치: `feature/gy/db-migration` (base: `develop`, merge-base에 PR #5~#12가 이미 병합돼 있음)
 > 이 문서는 로컬 Claude Code CLI 세션이 관리합니다. `BACKEND_ROADMAP.md`는 Cowork 세션이 별도로 관리하는
 > 문서이니 혼동하지 말 것. 이전 브랜치들의 작업 기록은 각각 PR #5~#8로 병합 완료돼 이 문서에서는 정리했다
 > — 상세 이력은 `git log`/PR 참고. PR 본문은 앞으로 `.github/PULL_REQUEST_TEMPLATE.md` 형식(작업
@@ -28,6 +28,7 @@
 | Event | ⏸ 보류 (PR #9) | PRD 근거 없어 설계 불가 — 3절 참고 |
 | Cart | ➖ 백엔드 작업 불필요로 확인 (PR #10) | 프론트가 Zustand `persist`(localStorage)로 클라이언트에만 보관, 서버 동기화 없음 |
 | 메뉴 옵션 관리자 CRUD | ✅ `develop` 기준 구현됨 (PR #11) | 옵션 그룹/선택지 생성·수정·삭제·품절처리. 조회는 기존 `GET /menus/{id}`가 담당 |
+| DB 마이그레이션(Flyway) | ✅ 도입 완료 (이 브랜치) | prod 전용 baseline(`V1__init.sql`), local/test는 기존 H2 ddl-auto 유지 — 2.3절 참고 |
 
 ## 2. 지금까지 한 일 (이 브랜치)
 
@@ -88,6 +89,51 @@
   그룹 생성/중복명/메뉴없음/잘못된타입, 그룹 수정/없음, 그룹 삭제, 선택지 생성/중복명, 선택지 수정,
   선택지 품절처리, 선택지 삭제) 전부 통과, 기존 테스트 회귀 없음.
 
+### 2.3 DB 마이그레이션(Flyway) 도입 — 완료
+- **배경**: `backend/CLAUDE.md`/`BACKEND_ROADMAP.md`에 기록된 known gap — prod 프로필(`ddl-auto: validate`)이
+  스키마를 직접 만들지 않는데도 그 스키마를 만들어줄 마이그레이션 도구가 없었음. `coupons`,
+  `member.stamp_count`, 메뉴 옵션 그룹·선택지 테이블까지 추가돼 관리 대상이 더 늘어난 상태였음.
+- **설계 결정**: local/test는 지금처럼 H2 + `ddl-auto`(각각 `update`/`create-drop`)로 엔티티 기반 자동
+  스키마 생성을 유지하고, **prod에만 Flyway를 적용**하기로 함(로컬 개발 속도를 유지하면서 prod 스키마
+  변경 이력만 버전 관리하는 절충 — 두 환경 모두 Flyway로 통일하는 것도 고려했으나, 개발 중 엔티티를
+  자주 바꾸는 현재 단계에서 매번 마이그레이션 스크립트를 쓰는 비용이 더 크다고 판단).
+- `build.gradle.kts`: `flyway-core`, `flyway-database-postgresql` 추가(버전은 Spring Boot BOM이 관리).
+- `src/main/resources/application.yaml`: local 프로필에 `spring.flyway.enabled: false` 명시(플러그인이
+  클래스패스에 올라오면 기본값이 `true`라 명시적으로 꺼야 함), prod 프로필에
+  `spring.flyway.enabled: true` + `locations: classpath:db/migration` 명시.
+- `src/test/resources/application-test.yaml`: 동일한 이유로 `spring.flyway.enabled: false` 추가.
+- `src/main/resources/db/migration/V1__init.sql` 신규: 현재 11개 엔티티(Store/StoreAccount/Category/Menu/
+  MenuOptionGroup/MenuOptionChoice/Member/Coupon/Order/OrderItem/Payment) 전체를 PostgreSQL DDL로 그대로
+  스냅샷(이 브랜치의 `develop` 기준, 즉 PR #5~#12가 모두 반영된 flat 패키지 구조의 엔티티와 대조해 재검증
+  완료). `Category.order` 컬럼은 Postgres 예약어라 `"order"`로 quoting. 인덱스/유니크 제약은 엔티티의
+  `@Index`/`unique = true`를 그대로 반영했지만, `ddl-auto: validate`는 테이블/컬럼/타입/nullable만
+  검증하고 인덱스 정의는 검증하지 않으므로 인덱스 이름·구성은 엔티티와 완전 동일할 필요는 없음(참고용으로만
+  맞춤).
+- **검증**: `JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ./gradlew test` 전체 통과(`BUILD SUCCESSFUL`, 95개
+  테스트 전부 성공, 회귀 없음) — local/test 모두 Flyway가 꺼져 있어 기존 H2 기반 흐름에 영향 없음을 확인.
+  실제 Postgres에 `V1__init.sql`을 적용해보는 검증은 로컬에 Postgres 인스턴스가 없어 못 함(다음
+  prod/스테이징 배포 시 1회성으로 확인 필요).
+- **후속 조치**: 이제부터 엔티티 변경 시 반드시 `Vn__*.sql` 마이그레이션을 함께 추가해야 함(더 이상
+  `ddl-auto`가 prod 스키마를 대신 만들어주지 않음) — `backend/CLAUDE.md`/`CLAUDE.md`에 아직 이 규칙이
+  명시돼 있지 않으니 별도 문서 동기화 작업에서 반영 예정.
+
+### 2.4 (부수 발견) `develop`의 죽은 중복 테스트 파일 3개 제거
+- `./gradlew test` 실행 중 `:compileTestKotlin`이 실패함을 발견. 원인: `src/test/kotlin/com/gy/smartorder/
+  services/{member,menu,payment}/*ServiceTest.kt` 3개 파일이 옛 레이어 우선 구조(`entities.*`/`dtos.*`/
+  `services.*` 패키지)를 참조하고 있었는데, 실제 메인 소스는 이미 flat 구조로 전환돼 해당 패키지가
+  존재하지 않아 컴파일 자체가 깨져 있었음(즉 이 시점 `origin/develop`은 `./gradlew test`가 실패하는
+  상태였음 — 2.1절 패키지 구조 전환과 PR #13 병합 과정에서 정리가 덜 된 잔재로 추정).
+- `member`/`menu` 쪽은 이미 flat 경로(`member/MemberServiceTest.kt`, `menu/MenuOptionServiceTest.kt`)에
+  최신 동작을 검증하는 정상 버전이 따로 존재해 완전히 중복이었음(특히 stray `services/member/
+  MemberServiceTest.kt`는 스탬프 적립 트리거를 "결제 승인 시"로 가정하는 옛 설계를 테스트하고 있었는데,
+  실제 현재 구현은 `OrderService.updateOrderStatus()`에서 주문이 `PICKED_UP`으로 바뀔 때 적립하는 방식으로
+  이미 대체되어 있었음 — `OrderServiceTest.kt`가 이 동작을 이미 커버 중).
+- `payment` 쪽(`services/payment/PaymentServiceTest.kt`)은 flat 경로에 대응 파일이 아예 없었지만, 이 파일이
+  검증하던 "PaymentService가 결제 승인 시 `memberService.earnStamp()`를 호출한다"는 동작 자체가 현재
+  `PaymentService`(생성자에 `memberService` 의존성 없음)에 더 이상 존재하지 않아 테스트 대상 자체가
+  사라진 상태였음. 커버리지 손실 없이 삭제 가능하다고 판단.
+- 세 파일 모두 `git rm`으로 삭제. 삭제 후 `./gradlew test` 재실행해 95개 테스트 전부 통과 확인.
+
 ## 3. 다음에 할 일 (우선순위 순, `BACKEND_ROADMAP.md` 기준)
 
 ### [x] 0. Coupon 도메인 — 완료 (PR #6, `develop` 병합됨)
@@ -98,21 +144,26 @@
 
 ### [x] 4. Cart 도메인 — 백엔드 작업 불필요로 확인 (PR #10, `develop` 병합됨)
 ### [x] 5. 메뉴 옵션 관리자 CRUD — 완료 (PR #11, `develop` 병합됨)
-### [x] (번외) Package by Layer → Package by Feature 전환 — 완료, 2026-09-07 (이 브랜치)
+### [x] (번외) Package by Layer → Package by Feature 전환 — 완료, 2026-09-07 (`develop` 병합됨)
 - 2.1절 참고. 로드맵 우선순위 목록에는 없던 사용자 직접 요청 작업.
 
-### [ ] 6. 인프라/운영
-- 마이그레이션 도구(Flyway/Liquibase) 도입 — prod 프로필(`ddl-auto: validate`)용 스키마 스크립트 없음.
-  이번에 `coupons` 테이블도 추가돼 관리 대상 테이블이 더 늘어남.
-- CI에서 `./gradlew build` 자동 검증.
+### [x] 6-1. 마이그레이션 도구(Flyway) 도입 — 완료, 2026-09-21 (`feature/gy/db-migration` 브랜치)
+- 2.3절 참고.
+
+### [ ] 6-2. CI에서 `./gradlew build` 자동 검증
+- 아직 착수 전. GitHub Actions 워크플로 신설 필요(별도 브랜치에서 진행 예정).
 
 ## 4. 리스크 / 확인 필요 항목
 - **쿠폰 발급 경로가 웰컴 쿠폰뿐**: 관리자가 프로모션 쿠폰을 임의로 발급하는 기능은 아직 없음. 필요해지면
   별도 우선순위로(관리자 발급 API 신설 또는 `POST /stores/{storeId}/coupons` 등).
 - **(해결됨, PR #6)** ~~Order 동시 요청 경쟁 상태로 쿠폰 이중 소비 방지가 불완전~~ — `ConflictException` 캐치 후
   재조회하는 방식으로 수정 완료.
-- **DB 마이그레이션 도구 부재**: `coupons`, `member.stamp_count` 컬럼 포함, prod 스키마 스크립트가 여전히
-  없음(3절 6번 참고).
 - **스탬프 적립 시점은 PRD에 명시되지 않아 판단으로 결정함**: "주문이 `PICKED_UP`(픽업 완료) 상태로 전환될
   때 1개 적립"으로 구현(생성 시점이 아니라 완료 시점 — 취소된 주문에는 적립 안 됨). PRD/기획 의도와 다르면
   `OrderService.updateOrderStatus()`의 `justPickedUp` 조건만 바꾸면 됨.
+- **DB 마이그레이션 도구 도입은 됐지만 실제 Postgres 적용 검증 안 됨**: `V1__init.sql`(2.3절)을 로컬에
+  Postgres 인스턴스가 없어 실제로 띄워서 확인하지 못함. 다음 prod/스테이징 배포 시 최초 1회 Flyway가
+  정상 적용되는지(그리고 Hibernate `ddl-auto: validate`가 통과하는지) 반드시 확인 필요.
+- **엔티티 변경 시 마이그레이션 스크립트 동반 필수로 규칙이 바뀜**: Flyway 도입 이후 prod는 더 이상
+  `ddl-auto`가 스키마를 대신 만들어주지 않으므로, 향후 엔티티 필드 추가/변경 작업은 `Vn__*.sql` 작성을
+  빠뜨리지 않도록 주의(2.3절 후속 조치 참고).
