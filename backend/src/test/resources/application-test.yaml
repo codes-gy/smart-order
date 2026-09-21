@@ -15,6 +15,10 @@ spring:
       ddl-auto: create-drop
     show-sql: false
 
+  # 테스트도 로컬과 동일하게 H2 자동 스키마 생성을 쓴다 — Flyway(prod 전용) 비활성화.
+  flyway:
+    enabled: false
+
   data:
     redis:
       host: localhost
