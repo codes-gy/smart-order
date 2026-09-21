@@ -59,6 +59,24 @@ class SecurityConfig(
                 // 매장 생성(POST)은 범위 밖 — PROGRESS.md 4절 5번 참고.
                 authorize(HttpMethod.PATCH, "/stores/**", hasRole("STORE_ADMIN"))
 
+                // 카테고리/메뉴/메뉴 옵션 변경도 매장 정보 변경과 동일하게 STORE_ADMIN 토큰만 허용.
+                // 조회(GET)는 로그인한 회원이면 그대로 볼 수 있도록 손대지 않음(기존 동작 유지).
+                authorize(HttpMethod.POST, "/stores/*/categories", hasRole("STORE_ADMIN"))
+                authorize(HttpMethod.PATCH, "/categories/**", hasRole("STORE_ADMIN"))
+                authorize(HttpMethod.DELETE, "/categories/**", hasRole("STORE_ADMIN"))
+
+                authorize(HttpMethod.POST, "/menus", hasRole("STORE_ADMIN"))
+                authorize(HttpMethod.PUT, "/menus/**", hasRole("STORE_ADMIN"))
+                authorize(HttpMethod.PATCH, "/menus/**", hasRole("STORE_ADMIN"))
+                authorize(HttpMethod.DELETE, "/menus/**", hasRole("STORE_ADMIN"))
+
+                authorize(HttpMethod.POST, "/menus/*/option-groups", hasRole("STORE_ADMIN"))
+                authorize(HttpMethod.PATCH, "/option-groups/**", hasRole("STORE_ADMIN"))
+                authorize(HttpMethod.DELETE, "/option-groups/**", hasRole("STORE_ADMIN"))
+                authorize(HttpMethod.POST, "/option-groups/*/choices", hasRole("STORE_ADMIN"))
+                authorize(HttpMethod.PATCH, "/option-choices/**", hasRole("STORE_ADMIN"))
+                authorize(HttpMethod.DELETE, "/option-choices/**", hasRole("STORE_ADMIN"))
+
                 authorize(anyRequest, authenticated)
             }
             addFilterBefore<UsernamePasswordAuthenticationFilter>(jwtAuthenticationFilter)
