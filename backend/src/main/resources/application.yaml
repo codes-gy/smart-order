@@ -75,6 +75,9 @@ spring:
     console:
       path: /h2-console
       enabled: true
+  # 로컬은 엔티티 기반 자동 스키마 생성(ddl-auto: update)을 그대로 쓴다 — 마이그레이션 스크립트 대상은 prod뿐.
+  flyway:
+    enabled: false
 
 logging:
   level:
@@ -100,6 +103,11 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
+
+  # V1__init.sql(baseline)부터 순차 적용. prod DB 스키마는 이제 여기서만 변경한다.
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
 
 logging:
   level:
