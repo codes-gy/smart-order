@@ -232,6 +232,7 @@ class OrderServiceTest {
         orderService.updateOrderStatus(
             100L,
             OrderDto.OrderStatusUpdateRequest(status = com.gy.smartorder.order.OrderStatus.PICKED_UP),
+            principalStoreId = 1L,
         )
 
         verify(memberService).earnStamp(1L)
@@ -245,6 +246,7 @@ class OrderServiceTest {
         orderService.updateOrderStatus(
             100L,
             OrderDto.OrderStatusUpdateRequest(status = com.gy.smartorder.order.OrderStatus.PICKED_UP),
+            principalStoreId = 1L,
         )
 
         verify(memberService, never()).earnStamp(anyLong())
@@ -258,6 +260,7 @@ class OrderServiceTest {
         orderService.updateOrderStatus(
             100L,
             OrderDto.OrderStatusUpdateRequest(status = com.gy.smartorder.order.OrderStatus.PREPARING),
+            principalStoreId = 1L,
         )
 
         verify(memberService, never()).earnStamp(anyLong())

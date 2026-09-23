@@ -2,6 +2,7 @@ package com.gy.smartorder.order
 
 import com.gy.smartorder.common.exception.BadRequestException
 import com.gy.smartorder.common.exception.ConflictException
+import com.gy.smartorder.common.exception.ForbiddenException
 import com.gy.smartorder.common.exception.NotFoundException
 import com.gy.smartorder.menu.Menu
 import com.gy.smartorder.menu.MenuStatus
@@ -114,13 +115,20 @@ class OrderService(
         return OrderDto.OrderCreateResponse(orderId = savedOrder.id.toString(), totalAmount = savedOrder.totalPrice)
     }
 
-    fun getOrder(orderId: Long): OrderDto.OrderResponse {
+    /**
+     * @param principalId 요청자 식별자 — Member 토큰이면 memberId, STORE_ADMIN 토큰이면 storeId
+     *   (JwtAuthenticationFilter가 그렇게 principal을 채운다. AuthController.logout()의 동일 패턴 참고).
+     * @param isStoreAdmin true면 order.store.id와, false면 order.memberId와 비교해 소유권을 검증한다.
+     */
+    fun getOrder(orderId: Long, principalId: Long, isStoreAdmin: Boolean): OrderDto.OrderResponse {
         val order = findOrderOrThrow(orderId)
+        assertOrderAccess(order, principalId, isStoreAdmin)
         return OrderDto.OrderResponse.from(order)
     }
 
     /** 매장 관리자 주문 큐/내역 (F-05). status 미지정 시 전체 내역을 반환한다. */
-    fun getOrdersByStore(storeId: Long, status: OrderStatus?): List<OrderDto.OrderSummaryResponse> {
+    fun getOrdersByStore(storeId: Long, status: OrderStatus?, principalStoreId: Long): List<OrderDto.OrderSummaryResponse> {
+        assertOwnStore(storeId, principalStoreId)
         val orders = if (status != null) {
             orderRepository.findByStoreIdAndStatusOrderByCreatedAtDesc(storeId, status)
         } else {
@@ -130,8 +138,9 @@ class OrderService(
     }
 
     @Transactional
-    fun updateOrderStatus(orderId: Long, req: OrderDto.OrderStatusUpdateRequest): OrderDto.OrderResponse {
+    fun updateOrderStatus(orderId: Long, req: OrderDto.OrderStatusUpdateRequest, principalStoreId: Long): OrderDto.OrderResponse {
         val order = findOrderOrThrow(orderId)
+        assertOwnStore(order.store.id, principalStoreId)
         // 이전 상태가 이미 PICKED_UP이면(상태 업데이트 재요청 등) 중복 적립하지 않는다.
         val justPickedUp = order.status != OrderStatus.PICKED_UP && req.status == OrderStatus.PICKED_UP
         order.updateStatus(req.status!!)
@@ -149,8 +158,9 @@ class OrderService(
      * 구독 시점의 현재 상태를 첫 이벤트로 즉시 보내, 이미 상태가 진행된 뒤 접속한 클라이언트도
      * 다음 상태 변경을 기다리지 않고 바로 현재 상태를 알 수 있게 한다.
      */
-    fun subscribeToOrderEvents(orderId: Long): SseEmitter {
+    fun subscribeToOrderEvents(orderId: Long, principalId: Long, isStoreAdmin: Boolean): SseEmitter {
         val order = findOrderOrThrow(orderId)
+        assertOrderAccess(order, principalId, isStoreAdmin)
         return orderEventPublisher.subscribe(orderId, OrderDto.OrderTrackingEvent.from(order))
     }
 
@@ -209,4 +219,17 @@ class OrderService(
     private fun findOrderOrThrow(orderId: Long): Order =
         orderRepository.findByIdOrNull(orderId)
             ?: throw NotFoundException("ORDER_NOT_FOUND", "해당 주문을 찾을 수 없습니다. id=$orderId")
+
+    private fun assertOrderAccess(order: Order, principalId: Long, isStoreAdmin: Boolean) {
+        val authorized = if (isStoreAdmin) order.store.id == principalId else order.memberId == principalId
+        if (!authorized) {
+            throw ForbiddenException("ORDER_ACCESS_DENIED", "본인 주문 또는 소속 매장의 주문만 조회할 수 있습니다.")
+        }
+    }
+
+    private fun assertOwnStore(storeId: Long, principalStoreId: Long) {
+        if (storeId != principalStoreId) {
+            throw ForbiddenException("STORE_ACCESS_DENIED", "다른 매장의 주문에는 접근할 수 없습니다.")
+        }
+    }
 }

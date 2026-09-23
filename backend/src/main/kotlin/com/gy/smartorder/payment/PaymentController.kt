@@ -3,6 +3,7 @@ package com.gy.smartorder.payment
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -17,9 +18,10 @@ class PaymentController(
     /** 결제 승인 확인 (PRD 6.B, 4.2). 클라이언트가 PG SDK로 결제를 마친 뒤 호출한다. */
     @PostMapping("/confirm")
     fun confirmPayment(
+        @AuthenticationPrincipal memberId: Long,
         @Valid @RequestBody req: PaymentDto.PaymentConfirmRequest,
     ): ResponseEntity<PaymentDto.PaymentConfirmResponse> {
-        val res = paymentService.confirmPayment(req)
+        val res = paymentService.confirmPayment(req, memberId)
         return ResponseEntity.status(HttpStatus.CREATED).body(res)
     }
 }

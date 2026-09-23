@@ -1,9 +1,11 @@
 package com.gy.smartorder.order
 
+import com.gy.smartorder.config.passport.JwtTokenProvider
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.Authentication
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
@@ -54,34 +56,46 @@ class OrderController(
     @GetMapping("/{orderId}/events", produces = [MediaType.TEXT_EVENT_STREAM_VALUE])
     fun streamOrderEvents(
         @PathVariable orderId: Long,
+        authentication: Authentication,
     ): SseEmitter {
-        return orderService.subscribeToOrderEvents(orderId)
+        return orderService.subscribeToOrderEvents(orderId, authentication.principalId(), authentication.isStoreAdmin())
     }
 
+    /** 본인이 주문한 회원 또는 그 매장의 STORE_ADMIN만 조회 가능 (IDOR 방지 — 2026-09 보안 점검). */
     @GetMapping("/{orderId}")
     fun getOrder(
         @PathVariable orderId: Long,
+        authentication: Authentication,
     ): ResponseEntity<OrderDto.OrderResponse> {
-        val res = orderService.getOrder(orderId)
+        val res = orderService.getOrder(orderId, authentication.principalId(), authentication.isStoreAdmin())
         return ResponseEntity.ok(res)
     }
 
-    /** 매장 관리자 주문 큐/내역 (F-05). status 미지정 시 전체 내역을 반환한다. */
+    /** 매장 관리자 주문 큐/내역 (F-05). status 미지정 시 전체 내역을 반환한다. STORE_ADMIN 본인 매장만 가능. */
     @GetMapping("/store/{storeId}")
     fun getOrdersByStore(
         @PathVariable storeId: Long,
         @RequestParam(required = false) status: OrderStatus?,
+        authentication: Authentication,
     ): ResponseEntity<List<OrderDto.OrderSummaryResponse>> {
-        val res = orderService.getOrdersByStore(storeId, status)
+        val res = orderService.getOrdersByStore(storeId, status, authentication.principalId())
         return ResponseEntity.ok(res)
     }
 
+    /** STORE_ADMIN 본인 매장의 주문만 상태 변경 가능 (IDOR 방지 — 2026-09 보안 점검). */
     @PatchMapping("/{orderId}/status")
     fun updateOrderStatus(
         @PathVariable orderId: Long,
         @Valid @RequestBody req: OrderDto.OrderStatusUpdateRequest,
+        authentication: Authentication,
     ): ResponseEntity<OrderDto.OrderResponse> {
-        val res = orderService.updateOrderStatus(orderId, req)
+        val res = orderService.updateOrderStatus(orderId, req, authentication.principalId())
         return ResponseEntity.ok(res)
     }
 }
+
+/** Member 토큰이면 memberId, STORE_ADMIN 토큰이면 storeId — AuthController.logout()과 동일한 패턴. */
+private fun Authentication.principalId(): Long = principal as Long
+
+private fun Authentication.isStoreAdmin(): Boolean =
+    authorities.any { it.authority == "ROLE_${JwtTokenProvider.ROLE_STORE_ADMIN}" }

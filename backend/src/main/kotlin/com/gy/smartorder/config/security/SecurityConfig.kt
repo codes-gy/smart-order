@@ -82,6 +82,11 @@ class SecurityConfig(
                 authorize(HttpMethod.PATCH, "/option-choices/**", hasRole("STORE_ADMIN"))
                 authorize(HttpMethod.DELETE, "/option-choices/**", hasRole("STORE_ADMIN"))
 
+                // 주문 상태 변경/매장별 주문 큐 조회는 STORE_ADMIN만 — 어느 매장인지는 서비스단에서
+                // principal(storeId)과 대조해 다른 매장 주문에는 접근 못하게 한다 (2026-09 보안 점검).
+                authorize(HttpMethod.PATCH, "/orders/*/status", hasRole("STORE_ADMIN"))
+                authorize(HttpMethod.GET, "/orders/store/**", hasRole("STORE_ADMIN"))
+
                 authorize(anyRequest, authenticated)
             }
             addFilterBefore<UsernamePasswordAuthenticationFilter>(jwtAuthenticationFilter)
