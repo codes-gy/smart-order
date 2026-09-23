@@ -1,7 +1,9 @@
 package com.gy.smartorder.config.security
 
+import com.gy.smartorder.config.passport.JwtAccessDeniedHandler
 import com.gy.smartorder.config.passport.JwtAuthenticationEntryPoint
 import com.gy.smartorder.config.passport.JwtAuthenticationFilter
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.HttpMethod
@@ -26,6 +28,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 class SecurityConfig(
     private val jwtAuthenticationFilter: JwtAuthenticationFilter,
     private val jwtAuthenticationEntryPoint: JwtAuthenticationEntryPoint,
+    private val jwtAccessDeniedHandler: JwtAccessDeniedHandler,
+    @Value("\${cors.allowed-origins}") private val corsAllowedOrigins: String,
 
 ) {
 
@@ -40,6 +44,7 @@ class SecurityConfig(
             headers { frameOptions { sameOrigin = true } }
             exceptionHandling {
                 authenticationEntryPoint = jwtAuthenticationEntryPoint
+                accessDeniedHandler = jwtAccessDeniedHandler
 
             }
             authorizeHttpRequests {
@@ -94,7 +99,11 @@ class SecurityConfig(
     @Bean
     fun corsConfigurationSource(): CorsConfigurationSource {
         val configuration = CorsConfiguration().apply {
-            allowedOriginPatterns = listOf("*") // 운영 환경에서는 허용 도메인 명시 권장
+            // 와일드카드(allowedOriginPatterns("*")) + allowCredentials(true) 조합은 임의의 외부
+            // 사이트가 쿠키/Authorization 헤더를 포함한 크로스 오리진 요청을 보내도 브라우저가 이를
+            // 허용해버려 CORS 보호가 사실상 무력화된다. cors.allowed-origins(CORS_ALLOWED_ORIGINS)로
+            // 프로필별 허용 도메인을 명시적으로 관리한다 (쉼표로 구분해 여러 개 지정 가능).
+            allowedOrigins = corsAllowedOrigins.split(",").map { it.trim() }.filter { it.isNotBlank() }
             allowedMethods = listOf("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
             allowedHeaders = listOf("*")
             allowCredentials = true

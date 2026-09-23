@@ -12,6 +12,7 @@ import com.gy.smartorder.store.StoreRepository
 import com.gy.smartorder.auth.oauth.SocialTokenVerifier
 import com.gy.smartorder.coupon.CouponService
 import org.slf4j.LoggerFactory
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
@@ -62,14 +63,27 @@ class AuthService(
             throw ConflictException("EMAIL_ALREADY_EXISTS", "이미 가입된 이메일입니다.")
         }
 
-        val member = memberRepository.save(
-            Member(
-                email = request.email,
-                password = passwordEncoder.encode(request.password),
-                nickname = request.nickname,
-                phoneNumber = request.phoneNumber,
+        val member = try {
+            memberRepository.save(
+                Member(
+                    email = request.email,
+                    password = passwordEncoder.encode(request.password),
+                    nickname = request.nickname,
+                    phoneNumber = request.phoneNumber,
+                )
             )
-        )
+        } catch (ex: DataIntegrityViolationException) {
+            // 위 pre-check 통과 직후, 동시에 들어온 다른 요청이 먼저 같은 email/phoneNumber로 저장을
+            // 마친 경쟁 상태 — Order/Payment의 idempotency 재조회와 달리 여기서는 "같은 요청의 재시도"가
+            // 아니라 실제로 남이 선점한 것이므로, 기존 회원을 반환하지 않고 동일한 409로 변환해 던진다.
+            if (memberRepository.findByEmail(request.email) != null) {
+                throw ConflictException("EMAIL_ALREADY_EXISTS", "이미 가입된 이메일입니다.")
+            }
+            if (request.phoneNumber != null && memberRepository.findByPhoneNumber(request.phoneNumber) != null) {
+                throw ConflictException("PHONE_NUMBER_ALREADY_EXISTS", "이미 가입된 휴대폰 번호입니다.")
+            }
+            throw ex
+        }
 
         val memberId = requireNotNull(member.id)
         couponService.issueWelcomeCoupon(memberId)

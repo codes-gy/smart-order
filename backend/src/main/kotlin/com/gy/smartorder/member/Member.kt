@@ -8,7 +8,6 @@ import jakarta.persistence.Enumerated
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
-import jakarta.persistence.Index
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
 import org.springframework.data.annotation.CreatedDate
@@ -50,10 +49,6 @@ enum class SocialProvider {
     uniqueConstraints = [
         UniqueConstraint(columnNames = ["social_provider", "social_id"]),
     ],
-    indexes = [
-        Index(name = "idx_member_email", columnList = "email"),
-        Index(name = "idx_member_phone", columnList = "phoneNumber")
-    ]
 )
 @EntityListeners(AuditingEntityListener::class)
 class Member(

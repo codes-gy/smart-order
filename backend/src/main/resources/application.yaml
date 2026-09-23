@@ -33,6 +33,11 @@ oauth:
   apple:
     client-id: ${APPLE_CLIENT_ID:} # Sign in with Apple Services ID/Bundle ID — 토큰 aud와 대조
 
+# CORS 허용 오리진 — 쉼표로 구분해 여러 도메인 지정 가능. prod는 CORS_ALLOWED_ORIGINS로 반드시 재정의할 것
+# (기본값은 로컬 Next.js dev 서버 포트).
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+
 management:
   endpoints:
     web:
