@@ -2,6 +2,7 @@ package com.gy.smartorder.auth
 
 import com.gy.smartorder.common.exception.ConflictException
 import com.gy.smartorder.common.exception.UnauthorizedException
+import com.gy.smartorder.config.passport.JwtAccessDeniedHandler
 import com.gy.smartorder.config.passport.JwtAuthenticationEntryPoint
 import com.gy.smartorder.config.passport.JwtTokenProvider
 import com.gy.smartorder.config.security.SecurityConfig
@@ -25,7 +26,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
  * `JwtAuthenticationFilter`가 `JwtTokenProvider`를 요구하는데 슬라이스엔 그 빈이 없어 `@MockitoBean`으로 채워준다.
  */
 @WebMvcTest(AuthController::class)
-@Import(SecurityConfig::class, JwtAuthenticationEntryPoint::class)
+@Import(SecurityConfig::class, JwtAuthenticationEntryPoint::class, JwtAccessDeniedHandler::class)
 class AuthControllerTest(
     @Autowired private val mockMvc: MockMvc,
 ) {
