@@ -1,6 +1,7 @@
 package com.gy.smartorder.store
 
 import com.gy.smartorder.common.exception.NotFoundException
+import com.gy.smartorder.config.passport.JwtAccessDeniedHandler
 import com.gy.smartorder.config.passport.JwtAuthenticationEntryPoint
 import com.gy.smartorder.config.passport.JwtTokenProvider
 import com.gy.smartorder.config.security.SecurityConfig
@@ -34,7 +35,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
  * 타입(`src/types/store.types.ts`, `src/types/common.types.ts`)과 1:1로 맞춘 것이다.
  */
 @WebMvcTest(StoreController::class)
-@Import(SecurityConfig::class, JwtAuthenticationEntryPoint::class)
+@Import(SecurityConfig::class, JwtAuthenticationEntryPoint::class, JwtAccessDeniedHandler::class)
 class StoreControllerTest(
     @Autowired private val mockMvc: MockMvc,
 ) {

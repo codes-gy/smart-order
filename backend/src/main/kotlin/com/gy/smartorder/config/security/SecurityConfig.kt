@@ -53,7 +53,8 @@ class SecurityConfig(
                 authorize("/swagger-ui.html", permitAll)
                 authorize("/docs/**", permitAll)
                 authorize("/h2-console/**", permitAll)
-                authorize("/actuator/**", permitAll)
+                // 헬스 체크만 공개. 나머지 actuator 경로는 노출도 하지 않고, 아래 anyRequest 규칙으로 인증도 요구한다.
+                authorize("/actuator/health", permitAll)
 
                 authorize("/admin/**", hasRole("ADMIN"))
 
