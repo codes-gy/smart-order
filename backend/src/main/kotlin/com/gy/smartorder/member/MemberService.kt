@@ -7,6 +7,7 @@ import com.gy.smartorder.coupon.CouponDto
 import com.gy.smartorder.coupon.CouponService
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDateTime
 
 @Service
 @Transactional(readOnly = true)
@@ -40,7 +41,11 @@ class MemberService(
     /** 주문이 픽업 완료(PICKED_UP) 상태가 될 때 1개 적립된다. */
     @Transactional
     fun earnStamp(memberId: Long) {
-        getMember(memberId).earnStamp()
+        // 엔티티 += 1 대신 DB에서 원자적으로 더해, 동시에 픽업 완료된 주문 두 건의 적립이 하나로 합쳐지지 않게 한다.
+        val updated = memberRepository.incrementStamp(memberId, LocalDateTime.now())
+        if (updated == 0) {
+            throw NotFoundException("MEMBER_NOT_FOUND", "회원 정보를 찾을 수 없습니다.")
+        }
     }
 
     /**
@@ -54,7 +59,12 @@ class MemberService(
         if (member.stampCount < STAMP_GOAL) {
             throw ConflictException("STAMP_NOT_ENOUGH", "스탬프가 아직 다 모이지 않았어요.")
         }
-        member.redeemStamp()
+        // 위 검사는 빠른 실패용. 실제 소비는 "목표치 이상일 때만 0으로" 조건부 UPDATE로 원자적으로 처리해,
+        // 동시 요청 두 건이 같은 리워드를 둘 다 쓰지 못하게 한다.
+        val updated = memberRepository.resetStampIfReached(memberId, STAMP_GOAL, LocalDateTime.now())
+        if (updated == 0) {
+            throw ConflictException("STAMP_NOT_ENOUGH", "스탬프가 아직 다 모이지 않았어요.")
+        }
         return STAMP_REWARD_DISCOUNT
     }
 

@@ -4,6 +4,8 @@ import org.slf4j.LoggerFactory
 import org.springframework.http.MediaType
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
+import org.springframework.transaction.event.TransactionPhase
+import org.springframework.transaction.event.TransactionalEventListener
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -33,7 +35,11 @@ class OrderEventPublisher {
     /** 새 SSE 구독을 등록하고, 현재 주문 상태를 첫 이벤트로 즉시 보낸다. */
     fun subscribe(orderId: Long, initialEvent: OrderDto.OrderTrackingEvent): SseEmitter {
         val emitter = SseEmitter(EMITTER_TIMEOUT_MS)
-        emittersByOrderId.computeIfAbsent(orderId) { CopyOnWriteArrayList() }.add(emitter)
+        // computeIfAbsent(...).add(...)는 리스트를 받아온 직후 remove()가 빈 리스트를 맵에서 지우면
+        // 고아 리스트에 add하게 된다. 등록도 compute로 키 단위 원자 연산 안에서 한다.
+        emittersByOrderId.compute(orderId) { _, emitters ->
+            (emitters ?: CopyOnWriteArrayList()).apply { add(emitter) }
+        }
 
         emitter.onCompletion { remove(orderId, emitter) }
         emitter.onTimeout {
@@ -51,6 +57,15 @@ class OrderEventPublisher {
     fun publish(orderId: Long, event: OrderDto.OrderTrackingEvent) {
         val emitters = emittersByOrderId[orderId] ?: return
         emitters.toList().forEach { emitter -> sendMessage(orderId, emitter, event) }
+    }
+
+    /**
+     * 주문 상태 변경 트랜잭션이 커밋된 뒤에만 SSE로 브로드캐스트한다.
+     * 롤백되면 호출되지 않으므로 클라이언트가 저장되지 않은 상태를 보는 일이 없다.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    fun onOrderStatusChanged(event: OrderStatusChangedEvent) {
+        publish(event.orderId, event.payload)
     }
 
     @Scheduled(fixedRate = HEARTBEAT_INTERVAL_MS)
@@ -80,10 +95,15 @@ class OrderEventPublisher {
         }
     }
 
+    /**
+     * 구독 해제. "제거 → 비었는지 확인 → 맵에서 삭제"를 따로 하면 그 사이에 같은 주문으로 새 구독이
+     * 붙었을 때 새 emitter가 든 리스트까지 맵에서 지워져 이벤트를 못 받는다. computeIfPresent로
+     * 키 단위 원자 연산 안에서 처리한다(null을 반환하면 엔트리가 제거된다).
+     */
     private fun remove(orderId: Long, emitter: SseEmitter) {
-        emittersByOrderId[orderId]?.remove(emitter)
-        if (emittersByOrderId[orderId]?.isEmpty() == true) {
-            emittersByOrderId.remove(orderId)
+        emittersByOrderId.computeIfPresent(orderId) { _, emitters ->
+            emitters.remove(emitter)
+            if (emitters.isEmpty()) null else emitters
         }
     }
 }

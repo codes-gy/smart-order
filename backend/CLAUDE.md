@@ -25,7 +25,8 @@
 - Framework : Spring Boot 4.1.0
 - Database : PostgreSQL
 - ORM: Spring Data JPA
-- Cache/Messaging: Redis, Apache Kafka
+- Cache: Redis (SMS 인증번호 · 로그아웃 토큰 무효화)
+- 실시간: SSE (SseEmitter, 단일 인스턴스 인메모리 레지스트리)
 - Build Tool: Gradle (Kotlin DSL)
 
 [Directory & Architecture Conventions]

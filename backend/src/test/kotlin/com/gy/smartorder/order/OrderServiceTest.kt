@@ -21,6 +21,9 @@ import org.mockito.BDDMockito.given
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
+import org.mockito.Mockito.verifyNoInteractions
+import org.springframework.context.ApplicationEventPublisher
+import org.springframework.dao.DataIntegrityViolationException
 import java.time.LocalTime
 
 /**
@@ -35,6 +38,7 @@ class OrderServiceTest {
     private lateinit var orderEventPublisher: OrderEventPublisher
     private lateinit var couponService: CouponService
     private lateinit var memberService: MemberService
+    private lateinit var applicationEventPublisher: ApplicationEventPublisher
     private lateinit var orderService: OrderService
 
     @BeforeEach
@@ -45,7 +49,11 @@ class OrderServiceTest {
         orderEventPublisher = mock(OrderEventPublisher::class.java)
         couponService = mock(CouponService::class.java)
         memberService = mock(MemberService::class.java)
-        orderService = OrderService(orderRepository, storeRepository, menuRepository, orderEventPublisher, couponService, memberService)
+        applicationEventPublisher = mock(ApplicationEventPublisher::class.java)
+        // 단위 테스트라 프록시(트랜잭션) 없이 실제 OrderCreator를 직접 엮는다. 실제 트랜잭션/동시성 동작은
+        // OrderConcurrencyIntegrationTest에서 H2 DB로 검증한다.
+        val orderCreator = OrderCreator(orderRepository, storeRepository, menuRepository, couponService, memberService)
+        orderService = OrderService(orderRepository, orderCreator, orderEventPublisher, applicationEventPublisher, memberService)
     }
 
     private fun store() = Store(
@@ -81,7 +89,7 @@ class OrderServiceTest {
     @Test
     fun `쿠폰 없이 주문하면 아이템 합계 그대로 총액이 된다`() {
         val store = store()
-        given(orderRepository.findByIdempotencyKey("idem-key-1")).willReturn(null)
+        given(orderRepository.findByMemberIdAndIdempotencyKey(1L, "idem-key-1")).willReturn(null)
         given(storeRepository.findById(1L)).willReturn(java.util.Optional.of(store))
         given(menuRepository.findById(1L)).willReturn(java.util.Optional.of(menu(store)))
         given(orderRepository.save(any(Order::class.java))).willAnswer { it.arguments[0] as Order }
@@ -95,7 +103,7 @@ class OrderServiceTest {
     @Test
     fun `쿠폰을 지정하면 소비하고 할인액만큼 총액에서 뺀다`() {
         val store = store()
-        given(orderRepository.findByIdempotencyKey("idem-key-1")).willReturn(null)
+        given(orderRepository.findByMemberIdAndIdempotencyKey(1L, "idem-key-1")).willReturn(null)
         given(storeRepository.findById(1L)).willReturn(java.util.Optional.of(store))
         given(menuRepository.findById(1L)).willReturn(java.util.Optional.of(menu(store)))
         given(couponService.redeem(1L, 10L)).willReturn(1000)
@@ -110,7 +118,7 @@ class OrderServiceTest {
     @Test
     fun `할인액이 아이템 합계보다 크면 총액은 0원 아래로 내려가지 않는다`() {
         val store = store()
-        given(orderRepository.findByIdempotencyKey("idem-key-1")).willReturn(null)
+        given(orderRepository.findByMemberIdAndIdempotencyKey(1L, "idem-key-1")).willReturn(null)
         given(storeRepository.findById(1L)).willReturn(java.util.Optional.of(store))
         given(menuRepository.findById(1L)).willReturn(java.util.Optional.of(menu(store, price = 500)))
         given(couponService.redeem(1L, 10L)).willReturn(2000)
@@ -124,7 +132,7 @@ class OrderServiceTest {
     @Test
     fun `유효하지 않은 쿠폰이면 CouponService의 예외가 그대로 전파되고 주문은 저장되지 않는다`() {
         val store = store()
-        given(orderRepository.findByIdempotencyKey("idem-key-1")).willReturn(null)
+        given(orderRepository.findByMemberIdAndIdempotencyKey(1L, "idem-key-1")).willReturn(null)
         given(storeRepository.findById(1L)).willReturn(java.util.Optional.of(store))
         given(menuRepository.findById(1L)).willReturn(java.util.Optional.of(menu(store)))
         given(couponService.redeem(1L, 999L)).willThrow(NotFoundException("COUPON_NOT_FOUND", "해당 쿠폰을 찾을 수 없습니다."))
@@ -137,7 +145,7 @@ class OrderServiceTest {
     @Test
     fun `스탬프 리워드를 사용하면 소비하고 할인액만큼 총액에서 뺀다`() {
         val store = store()
-        given(orderRepository.findByIdempotencyKey("idem-key-1")).willReturn(null)
+        given(orderRepository.findByMemberIdAndIdempotencyKey(1L, "idem-key-1")).willReturn(null)
         given(storeRepository.findById(1L)).willReturn(java.util.Optional.of(store))
         given(menuRepository.findById(1L)).willReturn(java.util.Optional.of(menu(store)))
         given(memberService.redeemStamp(1L)).willReturn(4500)
@@ -160,7 +168,7 @@ class OrderServiceTest {
             packagingType = PackagingType.TAKE_OUT,
             idempotencyKey = "idem-key-1",
         )
-        given(orderRepository.findByIdempotencyKey("idem-key-1"))
+        given(orderRepository.findByMemberIdAndIdempotencyKey(1L, "idem-key-1"))
             .willReturn(null, concurrentlyCreatedOrder)
         given(storeRepository.findById(1L)).willReturn(java.util.Optional.of(store))
         given(menuRepository.findById(1L)).willReturn(java.util.Optional.of(menu(store)))
@@ -186,7 +194,7 @@ class OrderServiceTest {
         )
         // 첫 조회(멱등성 체크)에는 아직 없다가, 쿠폰 redeem이 COUPON_ALREADY_USED로 실패한 뒤 재조회하면
         // 동시 요청이 그새 커밋한 주문이 보이는 상황을 재현한다.
-        given(orderRepository.findByIdempotencyKey("idem-key-1"))
+        given(orderRepository.findByMemberIdAndIdempotencyKey(1L, "idem-key-1"))
             .willReturn(null, concurrentlyCreatedOrder)
         given(storeRepository.findById(1L)).willReturn(java.util.Optional.of(store))
         given(menuRepository.findById(1L)).willReturn(java.util.Optional.of(menu(store)))
@@ -203,7 +211,7 @@ class OrderServiceTest {
     @Test
     fun `쿠폰이 진짜로 이미 사용됐고 동시 요청도 아니라면 ConflictException이 그대로 전파된다`() {
         val store = store()
-        given(orderRepository.findByIdempotencyKey("idem-key-1")).willReturn(null)
+        given(orderRepository.findByMemberIdAndIdempotencyKey(1L, "idem-key-1")).willReturn(null)
         given(storeRepository.findById(1L)).willReturn(java.util.Optional.of(store))
         given(menuRepository.findById(1L)).willReturn(java.util.Optional.of(menu(store)))
         given(couponService.redeem(1L, 10L))
@@ -212,6 +220,58 @@ class OrderServiceTest {
         assertThatThrownBy { orderService.createOrder(createRequest(couponId = 10L), null, memberId = 1L) }
             .isInstanceOf(ConflictException::class.java)
         verify(orderRepository, never()).save(any(Order::class.java))
+    }
+
+    @Test
+    fun `동일 idempotencyKey의 동시 요청이 먼저 INSERT를 커밋해 유니크 위반이 나면 그 주문을 멱등하게 반환한다`() {
+        val store = store()
+        val concurrentlyCreatedOrder = Order(
+            id = 44L,
+            store = store,
+            memberId = 1L,
+            totalPrice = 4000,
+            packagingType = PackagingType.TAKE_OUT,
+            idempotencyKey = "idem-key-1",
+        )
+        given(orderRepository.findByMemberIdAndIdempotencyKey(1L, "idem-key-1"))
+            .willReturn(null, concurrentlyCreatedOrder)
+        given(storeRepository.findById(1L)).willReturn(java.util.Optional.of(store))
+        given(menuRepository.findById(1L)).willReturn(java.util.Optional.of(menu(store)))
+        given(orderRepository.save(any(Order::class.java)))
+            .willThrow(DataIntegrityViolationException("uk_orders_member_idempotency_key"))
+
+        val response = orderService.createOrder(createRequest(), null, memberId = 1L)
+
+        assertThat(response.orderId).isEqualTo("44")
+    }
+
+    @Test
+    fun `멱등성 키는 회원 단위로 조회한다 - 다른 회원의 같은 키 주문은 반환하지 않는다`() {
+        val store = store()
+        given(orderRepository.findByMemberIdAndIdempotencyKey(2L, "idem-key-1")).willReturn(null)
+        given(storeRepository.findById(1L)).willReturn(java.util.Optional.of(store))
+        given(menuRepository.findById(1L)).willReturn(java.util.Optional.of(menu(store)))
+        given(orderRepository.save(any(Order::class.java))).willAnswer { (it.arguments[0] as Order).apply { id = 77L } }
+
+        val response = orderService.createOrder(createRequest(), null, memberId = 2L)
+
+        assertThat(response.orderId).isEqualTo("77")
+        verify(orderRepository, never()).findByMemberIdAndIdempotencyKey(1L, "idem-key-1")
+    }
+
+    @Test
+    fun `상태 변경 시 SSE를 직접 보내지 않고 커밋 후 리스너용 이벤트만 발행한다`() {
+        val order = existingOrder(store(), status = com.gy.smartorder.order.OrderStatus.ACCEPTED)
+        given(orderRepository.findById(100L)).willReturn(java.util.Optional.of(order))
+
+        orderService.updateOrderStatus(
+            100L,
+            OrderDto.OrderStatusUpdateRequest(status = com.gy.smartorder.order.OrderStatus.PREPARING),
+            principalStoreId = 1L,
+        )
+
+        verify(applicationEventPublisher).publishEvent(any(OrderStatusChangedEvent::class.java))
+        verifyNoInteractions(orderEventPublisher)
     }
 
     private fun existingOrder(store: Store, status: com.gy.smartorder.order.OrderStatus) = Order(

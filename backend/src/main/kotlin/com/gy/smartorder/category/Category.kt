@@ -21,7 +21,8 @@ import java.time.LocalDateTime
 @Table(
     name = "category",
     indexes = [
-        Index(name = "idx_category_store_order", columnList = "store_id, order")
+        // `order`는 SQL 예약어라 따옴표 없이 쓰면 DDL/INSERT가 깨진다(V1__init.sql도 "order"로 인용).
+        Index(name = "idx_category_store_order", columnList = "store_id, `order`")
     ]
 )
 @EntityListeners(AuditingEntityListener::class)
@@ -37,7 +38,8 @@ class Category (
     @Column(nullable = false, length = 50)
     var name: String,
 
-    @Column(nullable = false)
+    // SQL 예약어 컬럼이라 백틱으로 인용시켜 Hibernate가 "order"로 감싸 SQL을 만들게 한다.
+    @Column(name = "`order`", nullable = false)
     var order: Int = 0,
 
     @CreatedDate
@@ -53,4 +55,4 @@ class Category (
         this.name = name
         this.order = order
     }
-}
+}

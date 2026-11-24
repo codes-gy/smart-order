@@ -22,7 +22,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPat
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 
 /**
- * 컨트롤러 계층만 검증한다(`@WebMvcTest` — JPA/Redis/Kafka는 로드하지 않는다).
+ * 컨트롤러 계층만 검증한다(`@WebMvcTest` — JPA/Redis는 로드하지 않는다).
  * `GlobalExceptionHandler`는 `@ControllerAdvice`라 `@WebMvcTest`가 자동으로 스캔에 포함하지만,
  * `SecurityConfig`는 평범한 `@Configuration`이라 슬라이스가 스캔하지 않는다 — 명시적으로
  * `@Import`하지 않으면 스프링 시큐리티 기본값(전체 요청 인증 필요)이 적용돼 모든 요청이 401이 된다.
