@@ -16,6 +16,7 @@ import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.OneToMany
 import jakarta.persistence.Table
+import jakarta.persistence.UniqueConstraint
 import org.springframework.data.annotation.CreatedDate
 import org.springframework.data.annotation.LastModifiedDate
 import org.springframework.data.jpa.domain.support.AuditingEntityListener
@@ -46,7 +47,12 @@ enum class PackagingType {
     indexes = [
         Index(name = "idx_orders_store_status", columnList = "store_id, status"),
         Index(name = "idx_orders_created_at", columnList = "created_at"),
-    ]
+    ],
+    uniqueConstraints = [
+        // 멱등성 키는 클라이언트가 만든 값이라 회원끼리 우연히(또는 악의적으로) 겹칠 수 있다.
+        // 전역 유니크였을 때는 다른 회원의 주문 ID가 그대로 반환됐으므로, 회원 단위로 유니크를 건다.
+        UniqueConstraint(name = "uk_orders_member_idempotency_key", columnNames = ["member_id", "idempotency_key"]),
+    ],
 )
 @EntityListeners(AuditingEntityListener::class)
 class Order(
@@ -74,19 +80,19 @@ class Order(
     @Column(nullable = false, length = 20)
     var packagingType: PackagingType = PackagingType.TAKE_OUT,
 
-    /** 적용한 쿠폰 ID. 실제 할인 반영/소비 처리는 `OrderService.createOrder()`가 `CouponService.redeem()`으로 한다. */
+    /** 적용한 쿠폰 ID. 실제 할인 반영/소비 처리는 `OrderCreator.create()`가 `CouponService.redeem()`으로 한다. */
     @Column(name = "coupon_id")
     var couponId: Long? = null,
 
-    /** 적립(스탬프) 사용 여부. true면 `OrderService.createOrder()`가 `MemberService.redeemStamp()`로 소비하고 할인액을 totalPrice에 반영한다. */
+    /** 적립(스탬프) 사용 여부. true면 `OrderCreator.create()`가 `MemberService.redeemStamp()`로 소비하고 할인액을 totalPrice에 반영한다. */
     @Column(nullable = false)
     var useStamp: Boolean = false,
 
     /**
-     * 클라이언트가 생성한 멱등성 키(X-Idempotency-Key). 유니크 제약으로 동시에 같은 키로
-     * 재요청이 들어와도 주문이 두 번 생성되지 않도록 DB 레벨에서 보장한다.
+     * 클라이언트가 생성한 멱등성 키(X-Idempotency-Key). (member_id, idempotency_key) 복합 유니크 제약으로
+     * 같은 회원이 동시에 같은 키로 재요청해도 주문이 두 번 생성되지 않도록 DB 레벨에서 보장한다.
      */
-    @Column(name = "idempotency_key", nullable = false, unique = true, length = 100)
+    @Column(name = "idempotency_key", nullable = false, length = 100)
     var idempotencyKey: String,
 
     @OneToMany(mappedBy = "order", cascade = [CascadeType.ALL], orphanRemoval = true)
