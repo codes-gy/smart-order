@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * StoreService를 실제 StoreRepository + 임베디드 H2로 검증한다(Mockito 등 별도 mocking 없이).
- * `@DataJpaTest`는 JPA 관련 빈만 올리므로 Redis/Kafka/Security 자동 설정과 무관하게 가볍게 돈다.
+ * `@DataJpaTest`는 JPA 관련 빈만 올리므로 Redis/Security 자동 설정과 무관하게 가볍게 돈다.
  * PasswordEncoder는 시큐리티 슬라이스가 아니라 이 빈이 없어서 직접 생성해서 넣어준다.
  */
 @DataJpaTest
