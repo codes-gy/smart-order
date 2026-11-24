@@ -76,11 +76,21 @@ class CouponServiceTest {
     fun `본인 소유의 유효한 쿠폰을 사용하면 할인액을 반환하고 사용 처리한다`() {
         val target = coupon()
         given(couponRepository.findByIdAndMemberId(1L, 1L)).willReturn(target)
+        given(couponRepository.markUsedIfAvailable(eq(1L), eq(1L), anyLocalDateTime())).willReturn(1)
 
         val discount = couponService.redeem(memberId = 1L, couponId = 1L)
 
         assertThat(discount).isEqualTo(2000)
-        assertThat(target.isUsed).isTrue()
+        verify(couponRepository).markUsedIfAvailable(eq(1L), eq(1L), anyLocalDateTime())
+    }
+
+    @Test
+    fun `조회 시점엔 미사용이었지만 조건부 UPDATE가 0행이면(동시 사용) ConflictException을 던진다`() {
+        given(couponRepository.findByIdAndMemberId(1L, 1L)).willReturn(coupon())
+        given(couponRepository.markUsedIfAvailable(eq(1L), eq(1L), anyLocalDateTime())).willReturn(0)
+
+        assertThatThrownBy { couponService.redeem(memberId = 1L, couponId = 1L) }
+            .isInstanceOf(ConflictException::class.java)
     }
 
     @Test

@@ -49,7 +49,12 @@ class CouponService(
             throw BadRequestException("COUPON_EXPIRED", "만료된 쿠폰이에요.")
         }
 
-        coupon.markUsed()
+        // 위 검사는 빠른 실패/에러 구분용일 뿐, 실제 소비는 조건부 UPDATE 한 번으로 원자적으로 처리한다.
+        // 동시에 같은 쿠폰을 쓰려는 요청이 있으면 한쪽만 1행을 갱신하고 다른 쪽은 0행 → 이미 사용됨.
+        val updated = couponRepository.markUsedIfAvailable(couponId, memberId, LocalDateTime.now())
+        if (updated == 0) {
+            throw ConflictException("COUPON_ALREADY_USED", "이미 사용한 쿠폰이에요.")
+        }
         return coupon.discountAmount
     }
 }
