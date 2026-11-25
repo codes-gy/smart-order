@@ -8,4 +8,4 @@
 
 - `STORE_ADMIN` 역할 검사만으로는 다른 매장의 리소스를 막지 못한다. 매장 리소스를 바꾸는 서비스는 principal(storeId)과 리소스의 매장을 직접 비교해야 한다(PR #17에서 카테고리·메뉴·옵션에 추가).
 - `Member.Role.ADMIN`은 매장 관리자와 무관한 별개 역할이다.
-- 매장 계정을 만드는 API는 없고 사전에 DB로 넣는다고 가정한다.
+- 매장 계정은 따로 만드는 API 없이 매장 생성(`POST /stores`) 때 같은 트랜잭션에서 함께 발급된다(`StoreService.createStore`).
